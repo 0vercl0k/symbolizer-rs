@@ -82,5 +82,5 @@ jobs:
           name: symbolizer-rs.${{ matrix.os }}
           path: |
             target/release/symbolizer-rs.exe
-            target/release/symbolizer-rs.pdb
+            target/release/symbolizer_rs.pdb
             target/release/symbolizer-rs
