@@ -83,3 +83,4 @@ jobs:
           path: |
             target/release/symbolizer-rs.exe
             target/release/symbolizer-rs.pdb
+            target/release/symbolizer-rs
