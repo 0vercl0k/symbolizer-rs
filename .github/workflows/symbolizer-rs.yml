@@ -1,0 +1,85 @@
+name: Builds
+
+on: [push, pull_request]
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    name: fmt
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+
+      - name: Set up rust
+        run: rustup default nightly
+
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
+      - name: cargo fmt
+        run: cargo +nightly fmt --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+
+      - name: Set up rust
+        run: rustup default stable
+
+      - name: cargo clippy
+        env:
+          RUSTFLAGS: "-Dwarnings"
+        run: cargo clippy
+
+  doc:
+    name: doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+
+      - name: Set up rust
+        run: rustup default stable
+
+      - name: cargo doc
+        env:
+          RUSTDOCFLAGS: "-Dwarnings"
+        run: cargo doc
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+    name: build & test / ${{ matrix.os }}
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+
+      - name: Set up rust
+        run: rustup default stable
+
+      - name: cargo test
+        run: cargo test
+
+      - name: cargo test release
+        run: cargo test --release
+
+      - name: cargo check
+        run: cargo check
+
+      - name: cargo build
+        run: cargo build --release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbolizer-rs.${{ matrix.os }}
+          path: |
+            target/release/symbolizer-rs.exe
+            target/release/symbolizer-rs.pdb
