@@ -4,6 +4,7 @@
     <strong>A fast execution trace symbolizer for Windows that runs on all major platforms and doesn't depend on any Microsoft libraries.</strong>
   </p>
   <p>
+    <a href="https://crates.io/crates/symbolizer-rs"><img src="https://img.shields.io/crates/v/symbolizer-rs.svg" /></a>
     <img src='https://github.com/0vercl0k/symbolizer-rs/workflows/Builds/badge.svg'/>
   </p>
   <p>
