@@ -1,27 +1,36 @@
 // Axel '0vercl0k' Souchet - February 19 2024
 #![doc = include_str!("../README.md")]
-mod guid;
-mod hex_addrs_iter;
-mod human;
-mod misc;
-mod modules;
-mod pdbcache;
-mod pe;
-mod stats;
-mod symbolizer;
+use std::fs::File;
+use std::io::{stdout, BufReader, BufWriter, Write};
+use std::path::{Path, PathBuf};
+use std::{env, fs, io};
 
-use std::io::Write;
-use std::path::PathBuf;
-use std::{fs, io};
-
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use misc::sympath;
-use symbolizer::Symbolizer;
+use symbolizer_rs::{HexAddressesIterator, Symbolizer};
+
+/// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
+/// cache.
+fn sympath() -> Option<PathBuf> {
+    let env = env::var("_NT_SYMBOL_PATH").ok()?;
+
+    if !env.starts_with("srv*") {
+        return None;
+    }
+
+    let sympath = env.strip_prefix("srv*").unwrap();
+    let sympath = PathBuf::from(sympath.split('*').next().unwrap());
+
+    if sympath.is_dir() {
+        Some(sympath)
+    } else {
+        None
+    }
+}
 
 /// The style of the symbols.
-#[derive(Default, Debug, ValueEnum, Clone)]
+#[derive(Default, Debug, Clone, ValueEnum)]
 enum SymbolStyle {
     /// Module + offset style like `foo.dll+0x11`.
     Modoff,
@@ -74,6 +83,104 @@ struct CliArgs {
     /// The size in bytes of the buffer used to read data from the input files.
     #[arg(long, default_value_t = 1024 * 1024)]
     in_buffer_size: usize,
+}
+
+/// Create the output file from an input.
+///
+/// This logic was moved into a function to be able to handle the `--overwrite`
+/// logic and to handle the case when `output` is a directory path and not a
+/// file path. In that case, we will create a file with the same input file
+/// name, but with a specific suffix.
+fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> {
+    let output_path = if output.is_dir() {
+        // If the output is a directory, then we'll create a file that has the same file
+        // name as the input, but with a suffix.
+        let path = input.with_extension("symbolized.txt");
+        let filename = path.file_name().ok_or_else(|| anyhow!("no file name"))?;
+
+        output.join(filename)
+    } else {
+        // If the output path is already a file path, then we'll use it as is.
+        output.into()
+    };
+
+    // If the output exists, we'll want the user to tell us to overwrite those
+    // files.
+    if output_path.exists() && !args.overwrite {
+        // If they don't we will bail.
+        bail!(
+            "{} already exists, run with --overwrite",
+            output_path.display()
+        );
+    }
+
+    // We can now create the output file!
+    File::create(output_path.clone())
+        .with_context(|| format!("failed to create output file {output_path:?}"))
+}
+
+/// Process an input file and symbolize every line.
+fn symbolize_file(
+    symbolizer: &mut Symbolizer,
+    trace_path: impl AsRef<Path>,
+    args: &CliArgs,
+) -> Result<usize> {
+    let trace_path = trace_path.as_ref();
+    let input = File::open(trace_path)
+        .with_context(|| format!("failed to open {}", trace_path.display()))?;
+
+    let writer: Box<dyn Write> = match &args.output {
+        Some(output) => Box::new(get_output_file(args, trace_path, output)?),
+        None => Box::new(stdout()),
+    };
+
+    let mut output = BufWriter::with_capacity(args.out_buffer_size, writer);
+    let mut line_number = 1 + args.skip;
+    let mut lines_symbolized = 1;
+    let max_line = args.max.unwrap_or(usize::MAX);
+    let reader = BufReader::with_capacity(args.in_buffer_size, input);
+    for addr in HexAddressesIterator::new(reader).skip(args.skip) {
+        let addr = addr.with_context(|| {
+            format!(
+                "failed to get hex addr from l{line_number} of {}",
+                trace_path.display()
+            )
+        })?;
+
+        if args.line_numbers {
+            let mut buffer = itoa::Buffer::new();
+            output.write_all(&[b'l'])?;
+            output.write_all(buffer.format(line_number).as_bytes())?;
+            output.write_all(&[b':', b' '])?;
+        }
+
+        match args.style {
+            SymbolStyle::Modoff => symbolizer.modoff(&mut output, addr),
+            SymbolStyle::Full => symbolizer.full(&mut output, addr),
+        }
+        .with_context(|| {
+            format!(
+                "failed to symbolize l{line_number} of {}",
+                trace_path.display()
+            )
+        })?;
+
+        if lines_symbolized >= max_line {
+            println!(
+                "Hit maximum line limit {} for {}",
+                max_line,
+                trace_path.display()
+            );
+            break;
+        }
+
+        lines_symbolized += 1;
+        line_number += 1;
+    }
+
+    // symbolizer.stats.done_file(lines_symbolized.try_into()?);
+
+    Ok(lines_symbolized)
 }
 
 fn main() -> Result<()> {
@@ -138,7 +245,7 @@ fn main() -> Result<()> {
     let total = paths.len();
     for (idx, path) in paths.into_iter().enumerate() {
         print!("\x1B[2K\r");
-        symbolizer.process_file(&path, &args)?;
+        symbolize_file(&mut symbolizer, &path, &args)?;
         print!("[{}/{total}] {} done", idx + 1, path.display());
         io::stdout().flush()?;
     }

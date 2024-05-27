@@ -13,22 +13,15 @@ rust-version = "1.70"
 
 [dependencies]
 anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+itoa = "1.0.11"
 pdb = "0.8"
 log = "0.4"
 env_logger = "0.11"
-clap = { version = "4.5", features = ["derive"] }
 msvc-demangler = "0.10"
-ureq = { version = "2.9", default-features = false, features = [
-    "tls",
-    "gzip",
-] }
+ureq = { version = "2.9", default-features = false, features = ["tls", "gzip"] }
 kdmp-parser = "0.2"
-itoa = "1.0.11"
 
 [profile.release]
 debug = true
 panic = "abort"
-
-[[bin]]
-name = "symbolizer-rs"
-path = "src/main.rs"

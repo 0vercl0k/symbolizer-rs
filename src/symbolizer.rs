@@ -5,22 +5,20 @@ use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
 use std::fs::{self, File};
 use std::hash::{BuildHasher, Hasher};
-use std::io::{self, stdout, BufReader, BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use kdmp_parser::KernelDumpParser;
 use log::{debug, trace, warn};
 
-use crate::hex_addrs_iter::HexAddressesIterator;
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
 use crate::pe::{PdbId, Pe};
 use crate::stats::{Stats, StatsBuilder};
-use crate::CliArgs;
 
 /// Format a path to find a PDB in a symbol cache.
 ///
@@ -118,40 +116,6 @@ pub fn try_download_from_guid(
     }
 
     Ok(None)
-}
-
-/// Create the output file from an input.
-///
-/// This logic was moved into a function to be able to handle the `--overwrite`
-/// logic and to handle the case when `output` is a directory path and not a
-/// file path. In that case, we will create a file with the same input file
-/// name, but with a specific suffix.
-fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> {
-    let output_path = if output.is_dir() {
-        // If the output is a directory, then we'll create a file that has the same file
-        // name as the input, but with a suffix.
-        let path = input.with_extension("symbolized.txt");
-        let filename = path.file_name().ok_or_else(|| anyhow!("no file name"))?;
-
-        output.join(filename)
-    } else {
-        // If the output path is already a file path, then we'll use it as is.
-        output.into()
-    };
-
-    // If the output exists, we'll want the user to tell us to overwrite those
-    // files.
-    if output_path.exists() && !args.overwrite {
-        // If they don't we will bail.
-        bail!(
-            "{} already exists, run with --overwrite",
-            output_path.display()
-        );
-    }
-
-    // We can now create the output file!
-    File::create(output_path.clone())
-        .with_context(|| format!("failed to create output file {output_path:?}"))
 }
 
 /// Where did we find this PDB? On the file-system somewhere, in a local symbol
@@ -298,7 +262,7 @@ impl Symbolizer {
     }
 
     /// Get the [`PdbCache`] for a specified `addr`.
-    pub fn module_pdbcache(&self, addr: u64) -> Option<Rc<PdbCache>> {
+    fn module_pdbcache(&self, addr: u64) -> Option<Rc<PdbCache>> {
         self.pdb_caches.borrow().iter().find_map(|(k, v)| {
             if k.contains(&addr) {
                 Some(v.clone())
@@ -315,7 +279,7 @@ impl Symbolizer {
     /// or remotely) and extract every bit of relevant information for us.
     /// Finally, the result will be kept around to symbolize addresses in that
     /// module faster in the future.
-    pub fn try_symbolize_addr_from_pdbs(&self, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr_from_pdbs(&self, addr: u64) -> Result<Option<Rc<String>>> {
         trace!("symbolizing address {addr:#x}..");
         let Some(module) = self.modules.find(addr) else {
             trace!("address {addr:#x} doesn't belong to any module");
@@ -380,7 +344,7 @@ impl Symbolizer {
     /// If the address has been symbolized before, it will be in the
     /// `addr_cache` already. If not, we need to take the slow path and ask the
     /// right [`PdbCache`] which might require to create one in the first place.
-    pub fn try_symbolize_addr(&self, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr(&self, addr: u64) -> Result<Option<Rc<String>>> {
         match self.addr_cache.borrow_mut().entry(addr) {
             hash_map::Entry::Occupied(o) => {
                 self.stats.cache_hit();
@@ -400,7 +364,7 @@ impl Symbolizer {
 
     /// Symbolize `addr` in the `module+offset` style and write the result into
     /// `output`.
-    fn modoff(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
+    pub fn modoff(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
         let mut buffer = [0; 16];
         if let Some(module) = self.modules.find(addr) {
             output.write_all(module.name.as_bytes())?;
@@ -424,7 +388,7 @@ impl Symbolizer {
 
     /// Symbolize `addr` in the `module!function+offset` style and write the
     /// result into `output`.
-    fn full(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
+    pub fn full(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
         match self.try_symbolize_addr(addr)? {
             Some(sym) => {
                 output
@@ -436,65 +400,5 @@ impl Symbolizer {
             }
             None => self.modoff(output, addr),
         }
-    }
-
-    /// Process an input file and symbolize every line.
-    pub fn process_file(&mut self, trace_path: impl AsRef<Path>, args: &CliArgs) -> Result<usize> {
-        let trace_path = trace_path.as_ref();
-        let input = File::open(trace_path)
-            .with_context(|| format!("failed to open {}", trace_path.display()))?;
-
-        let writer: Box<dyn Write> = match &args.output {
-            Some(output) => Box::new(get_output_file(args, trace_path, output)?),
-            None => Box::new(stdout()),
-        };
-
-        let mut output = BufWriter::with_capacity(args.out_buffer_size, writer);
-        let mut line_number = 1 + args.skip;
-        let mut lines_symbolized = 1;
-        let max_line = args.max.unwrap_or(usize::MAX);
-        let reader = BufReader::with_capacity(args.in_buffer_size, input);
-        for addr in HexAddressesIterator::new(reader).skip(args.skip) {
-            let addr = addr.with_context(|| {
-                format!(
-                    "failed to get hex addr from l{line_number} of {}",
-                    trace_path.display()
-                )
-            })?;
-
-            if args.line_numbers {
-                let mut buffer = itoa::Buffer::new();
-                output.write_all(&[b'l'])?;
-                output.write_all(buffer.format(line_number).as_bytes())?;
-                output.write_all(&[b':', b' '])?;
-            }
-
-            match args.style {
-                crate::SymbolStyle::Modoff => self.modoff(&mut output, addr),
-                crate::SymbolStyle::Full => self.full(&mut output, addr),
-            }
-            .with_context(|| {
-                format!(
-                    "failed to symbolize l{line_number} of {}",
-                    trace_path.display()
-                )
-            })?;
-
-            if lines_symbolized >= max_line {
-                println!(
-                    "Hit maximum line limit {} for {}",
-                    max_line,
-                    trace_path.display()
-                );
-                break;
-            }
-
-            lines_symbolized += 1;
-            line_number += 1;
-        }
-
-        self.stats.done_file(lines_symbolized.try_into()?);
-
-        Ok(lines_symbolized)
     }
 }

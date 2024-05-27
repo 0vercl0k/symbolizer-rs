@@ -1,30 +1,9 @@
 // Axel '0vercl0k' Souchet - February 23 2024
 //! This module contains the implementation of a bunch of misc utility functions
 //! that didn't really fit anywhere else.
-use std::env;
-use std::path::PathBuf;
 
 /// A relative address.
 pub type Rva = u32;
-
-/// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
-/// cache.
-pub fn sympath() -> Option<PathBuf> {
-    let env = env::var("_NT_SYMBOL_PATH").ok()?;
-
-    if !env.starts_with("srv*") {
-        return None;
-    }
-
-    let sympath = env.strip_prefix("srv*").unwrap();
-    let sympath = PathBuf::from(sympath.split('*').next().unwrap());
-
-    if sympath.is_dir() {
-        Some(sympath)
-    } else {
-        None
-    }
-}
 
 /// Calculate a percentage value.
 pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
