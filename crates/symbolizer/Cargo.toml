@@ -1,0 +1,21 @@
+[package]
+name = "symbolizer"
+version = "0.1.0"
+# categories = ["command-line-utilities", "development-tools::debugging"]
+# description = "A fast execution trace symbolizer for Windows that runs on all major platforms and doesn't depend on any Microsoft libraries."
+include = ["/Cargo.toml", "/LICENSE", "/src/**", "README.md"]
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+edition.workspace = true
+
+[dependencies]
+pdb = "0.8"
+log = "0.4"
+msvc-demangler = "0.10"
+ureq = { version = "2.9", default-features = false, features = ["tls", "gzip"] }
+kdmp-parser = "0.2"
+thiserror = "1.0.61"
+anyhow = "1.0.86"

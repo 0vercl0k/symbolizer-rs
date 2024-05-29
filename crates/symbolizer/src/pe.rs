@@ -5,12 +5,13 @@ use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context};
 use kdmp_parser::{Gva, KdmpParserError, KernelDumpParser};
 use log::debug;
 
 use crate::guid::Guid;
 use crate::misc::Rva;
+use crate::{Error as E, Result};
 
 /// The IMAGE_DOS_HEADER.
 #[derive(Default, Debug)]
@@ -207,7 +208,7 @@ impl Display for PdbId {
 impl PdbId {
     pub fn new(path: PathBuf, guid: Guid, age: u32) -> Result<Self> {
         if path.file_name().is_none() {
-            bail!("pdb path {path:?} does not have a filename");
+            return Err(E::PdbPathNoName(path));
         }
 
         Ok(Self { path, guid, age })
@@ -240,7 +241,7 @@ pub fn read_string(parser: &KernelDumpParser, addr: u64, max: usize) -> Result<S
         let mut buf = [0];
         parser
             .virt_read_exact(gva, &mut buf)
-            .with_context(|| "failed reading null terminated string".to_string())?;
+            .map_err(|_| anyhow!("failed reading null terminated string"))?;
 
         let c = buf[0];
         if c == 0 {
@@ -284,7 +285,7 @@ impl Pe {
         // Read it.
         let debug_dir_addr = base
             .checked_add(debug_data_dir.virtual_address.into())
-            .ok_or_else(|| anyhow!("overflow with debug_data_dir"))?;
+            .ok_or(anyhow!("overflow w/ debug_data_dir"))?;
         let Some(debug_dir) =
             parser.try_virt_read_struct::<ImageDebugDirectory>(debug_dir_addr.into())?
         else {
@@ -309,7 +310,7 @@ impl Pe {
         // Let's read it.
         let codeview_addr = base
             .checked_add(debug_dir.address_of_raw_data.into())
-            .ok_or_else(|| anyhow!("overflow with debug_dir"))?;
+            .ok_or(anyhow!("overflow w/ debug_dir"))?;
         let Some(codeview) = parser.try_virt_read_struct::<Codeview>(codeview_addr.into())? else {
             debug!("failed to read codeview {codeview_addr:#x} because of mem translation");
             return Ok(None);
@@ -320,7 +321,7 @@ impl Pe {
         let leftover =
             usize::try_from(debug_dir.size_of_data).unwrap() - mem::size_of::<Codeview>();
         if leftover == 0 || leftover > 256 {
-            bail!("the module path is either 0 or larger than reasonable");
+            return Err(E::CodeViewInvalidPath);
         }
 
         // Allocate space for it, and read it.
@@ -331,7 +332,7 @@ impl Pe {
             1,
             mem::size_of::<Codeview>(),
         )
-        .ok_or_else(|| anyhow!("oveflow with debug_dir"))?;
+        .ok_or(anyhow!("overflow w/ debug_dir filename"))?;
 
         let Some(amount) = parser.try_virt_read(file_name_addr.into(), &mut file_name)? else {
             return Ok(None);
@@ -339,7 +340,7 @@ impl Pe {
 
         // The last character is supposed to be a NULL byte, bail if it's not there.
         if *file_name.last().unwrap() != 0 {
-            bail!("the module path doesn't end with a NULL byte");
+            return Err(anyhow!("the module path doesn't end with a NULL byte").into());
         }
 
         file_name.resize(amount - 1, 0);
@@ -368,7 +369,7 @@ impl Pe {
         // Read it.
         let export_dir_addr = base
             .checked_add(u64::from(export_data_dir.virtual_address))
-            .ok_or_else(|| anyhow!("overflow with export_data_dir"))?;
+            .ok_or(anyhow!("export_data_dir"))?;
         let Some(export_dir) =
             parser.try_virt_read_struct::<ImageExportDirectory>(export_dir_addr.into())?
         else {
@@ -397,7 +398,7 @@ impl Pe {
         for name_idx in 0..n_names {
             // Read the name RVA's..
             let name_rva_addr = array_offset(base, addr_of_names, name_idx, mem::size_of::<u32>())
-                .ok_or_else(|| anyhow!("overflow with name_rva_addr"))?;
+                .ok_or(anyhow!("name_rva_addr"))?;
             let Some(name_rva) = parser
                 .try_virt_read_struct::<u32>(name_rva_addr.into())
                 .with_context(|| "failed to read EAT's name array".to_string())?
@@ -410,17 +411,17 @@ impl Pe {
 
             let name_addr = base
                 .checked_add(name_rva.into())
-                .ok_or_else(|| anyhow!("overflow with name_addr"))?;
+                .ok_or(anyhow!("overflow w/ name_addr"))?;
             // ..then read the string in memory.
             let name = read_string(parser, name_addr, 64)?;
             names.push(name);
 
             // Read the ordinal.
             let ord_addr = array_offset(base, addr_of_ords, name_idx, mem::size_of::<u16>())
-                .ok_or_else(|| anyhow!("overflow with ord_addr"))?;
+                .ok_or(anyhow!("ord_addr"))?;
             let Some(ord) = parser
                 .try_virt_read_struct::<u16>(ord_addr.into())
-                .with_context(|| "failed to read EAT's ord array".to_string())?
+                .context("failed to read EAT's ord array")?
             else {
                 debug!("failed to read EAT's ord array {ord_addr:#x} because of mem translation");
                 return Ok(None);
@@ -444,7 +445,7 @@ impl Pe {
             // Read the RVA.
             let address_rva_addr =
                 array_offset(base, addr_of_functs, addr_idx, mem::size_of::<u32>())
-                    .ok_or_else(|| anyhow!("overflow with address_rva_addr"))?;
+                    .ok_or(anyhow!("overflow w/ address_rva_addr"))?;
 
             let Some(address_rva) = parser
                 .try_virt_read_struct::<u32>(address_rva_addr.into())
@@ -465,14 +466,14 @@ impl Pe {
             end: export_data_dir
                 .virtual_address
                 .checked_add(export_data_dir.size)
-                .ok_or_else(|| anyhow!("overflow with export data dir size"))?,
+                .ok_or(anyhow!("overflow w/ export data dir size"))?,
         };
 
         let mut exports = Vec::with_capacity(address_rvas.len());
         for (unbiased_ordinal, addr_rva) in address_rvas.drain(..).enumerate() {
             let ordinal = unbiased_ordinal
                 .checked_add(export_dir.base.try_into()?)
-                .ok_or_else(|| anyhow!("overflow with biased_ordinal"))?;
+                .ok_or(anyhow!("overflow w/ biased_ordinal"))?;
             let name = ords
                 .iter()
                 .position(|&o| usize::from(o) == unbiased_ordinal)
@@ -500,29 +501,29 @@ impl Pe {
             .with_context(|| "failed to read ImageDosHeader")?;
         let nt_hdr_addr = base
             .checked_add(dos_hdr.e_lfanew.try_into().unwrap())
-            .ok_or_else(|| anyhow!("overflow with e_lfanew"))?;
+            .ok_or(anyhow!("overflow w/ e_lfanew"))?;
         let nt_hdr = parser.virt_read_struct::<NtHeaders>(nt_hdr_addr.into())?;
 
         // Let's verify the signature..
         if nt_hdr.signature != IMAGE_NT_SIGNATURE {
-            bail!("wrong PE signature for {base:#x}");
+            return Err(anyhow!("wrong PE signature for {base:#x}").into());
         }
 
         // ..and let's ignore non x64 PEs.
         if nt_hdr.file_hdr.machine != IMAGE_FILE_MACHINE_AMD64 {
-            bail!("wrong architecture for {base:#x}");
+            return Err(anyhow!("wrong architecture for {base:#x}").into());
         }
 
         // Now locate the optional header, and check that it looks big enough.
         let opt_hdr_addr = nt_hdr_addr
             .checked_add(mem::size_of_val(&nt_hdr).try_into().unwrap())
-            .ok_or_else(|| anyhow!("overflow with nt_hdr"))?;
+            .ok_or(anyhow!("overflow w/ nt_hdr"))?;
         let opt_hdr_size = nt_hdr.file_hdr.size_of_optional_header as usize;
         debug!("parsing optional hdr @ {:#x}", opt_hdr_addr);
 
         // If it's not big enough, let's bail.
         if opt_hdr_size < mem::size_of::<ImageOptionalHeader64>() {
-            bail!("optional header's size is too small");
+            return Err(anyhow!("optional header's size is too small").into());
         }
 
         // Read the IMAGE_OPTIONAL_HEADER64.
@@ -536,16 +537,8 @@ impl Pe {
         // Read the EXPORT table if there's any.
         let exports = match Self::try_parse_export_dir(parser, base, &opt_hdr) {
             Ok(o) => o,
-            Err(e) => {
-                let Some(kdmp) = e.downcast_ref::<KdmpParserError>() else {
-                    return Err(e);
-                };
-
-                match kdmp {
-                    KdmpParserError::AddrTranslation(..) => None,
-                    _ => return Err(e),
-                }
-            }
+            Err(E::DumpParserError(KdmpParserError::AddrTranslation(_))) => None,
+            Err(e) => return Err(e),
         }
         .unwrap_or_default();
 

@@ -10,7 +10,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use anyhow::{bail, Context, Result};
+use anyhow::Context;
 use kdmp_parser::KernelDumpParser;
 use log::{debug, trace, warn};
 
@@ -19,6 +19,7 @@ use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
 use crate::pe::{PdbId, Pe};
 use crate::stats::{Stats, StatsBuilder};
+use crate::{Error as E, Result};
 
 /// Format a path to find a PDB in a symbol cache.
 ///
@@ -88,7 +89,12 @@ pub fn try_download_from_guid(
                 continue;
             }
             // If we received any other errors, well that's not expected so let's bail.
-            Err(e) => bail!("failed to download pdb {pdb_url}: {e}"),
+            Err(e) => {
+                return Err(E::DownloadPdb {
+                    pdb_url,
+                    e: e.into(),
+                })
+            }
         };
 
         // If the server knows about this file, it is time to create the directory
@@ -152,8 +158,7 @@ fn get_pdb(
     }
 
     // The last resort is to try to download it...
-    let downloaded_path = try_download_from_guid(symsrvs, sympath, pdb_id)
-        .with_context(|| format!("failed to download PDB for {pdb_id}"))?;
+    let downloaded_path = try_download_from_guid(symsrvs, sympath, pdb_id)?;
 
     Ok(downloaded_path.map(|p| (p, PdbKind::Download)))
 }
@@ -326,7 +331,7 @@ impl Symbolizer {
         // .. symbolize `addr`..
         let line = pdbcache
             .symbolize(module.rva(addr))
-            .with_context(|| format!("failed to symbolize {addr:#x}"))?;
+            .map_err(|e| E::Misc(format!("failed to symbolize {addr:#x}: {e:?}").into()))?;
 
         // .. and store the sym cache to be used for next time we need to symbolize an
         // address from this module.
@@ -383,7 +388,9 @@ impl Symbolizer {
 
         output
             .write_all(&[b'\n'])
-            .context("failed to write line feed modoff addr")
+            .context("failed to write line feed modoff addr")?;
+
+        Ok(())
     }
 
     /// Symbolize `addr` in the `module!function+offset` style and write the
@@ -394,9 +401,12 @@ impl Symbolizer {
                 output
                     .write_all(sym.as_bytes())
                     .context("failed to write symbolized value to output")?;
+
                 output
                     .write_all(&[b'\n'])
-                    .context("failed to write line feed")
+                    .context("failed to write line feed")?;
+
+                Ok(())
             }
             None => self.modoff(output, addr),
         }

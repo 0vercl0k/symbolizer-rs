@@ -1,6 +1,6 @@
 // Axel '0vercl0k' Souchet - May 26th 2024
+mod error;
 mod guid;
-mod hex_addrs_iter;
 mod human;
 mod misc;
 mod modules;
@@ -9,5 +9,5 @@ mod pe;
 mod stats;
 mod symbolizer;
 
-pub use hex_addrs_iter::HexAddressesIterator;
+pub use error::{Error, Result};
 pub use symbolizer::Symbolizer;

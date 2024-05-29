@@ -8,7 +8,11 @@ use std::{env, fs, io};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use symbolizer_rs::{HexAddressesIterator, Symbolizer};
+use symbolizer::Symbolizer;
+
+mod hex_addrs_iter;
+
+use hex_addrs_iter::HexAddressesIterator;
 
 /// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
 /// cache.
@@ -178,7 +182,7 @@ fn symbolize_file(
         line_number += 1;
     }
 
-    // symbolizer.stats.done_file(lines_symbolized.try_into()?);
+    symbolizer.stats.done_file(lines_symbolized.try_into()?);
 
     Ok(lines_symbolized)
 }

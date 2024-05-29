@@ -10,13 +10,14 @@ use std::fs::File;
 use std::ops::Range;
 use std::path::Path;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context};
 use log::{trace, warn};
 use pdb::{
     AddressMap, FallibleIterator, LineProgram, PdbInternalSectionOffset, ProcedureSymbol,
     StringTable, Symbol,
 };
 
+use crate::error::Result;
 use crate::modules::Module;
 
 /// A PDB opened via file access.
@@ -363,10 +364,10 @@ impl<'module> PdbCacheBuilder<'module> {
         len: Option<u32>,
         source_info: Option<SourceInfo>,
     ) -> Result<()> {
-        use msvc_demangler::DemangleFlags as E;
+        use msvc_demangler::DemangleFlags as DF;
         let undecorated_name = if name.as_bytes().starts_with(b"?") {
             // Demangle the name if it starts by a '?'.
-            match msvc_demangler::demangle(&name, E::NAME_ONLY) {
+            match msvc_demangler::demangle(&name, DF::NAME_ONLY) {
                 Ok(o) => o,
                 Err(e) => {
                     // Let's log the failures as warning because we might care one day?
@@ -498,11 +499,13 @@ impl<'module> PdbCacheBuilder<'module> {
         // global symbols. And if there's duplicates, then we'd rather have the entry
         // that gives us the exact procedure length instead of us guessing.
         self.parse_dbi(&mut pdb, &address_map)
-            .context("failed to parse private symbols")?;
+            .map_err(|e| anyhow!("failed to parse private symbols: {e:?}"))?;
 
         // Parse and extract all the bits we need from the global symbols..
         self.parse_global_symbols_table(&mut pdb, &address_map)
-            .context("failed to parse public symbols")
+            .map_err(|e| anyhow!("failed to parse public symbols: {e:?}"))?;
+
+        Ok(())
     }
 
     /// Build a [`PdbCache`].
@@ -516,7 +519,7 @@ impl<'module> PdbCacheBuilder<'module> {
                 // If we have a length, then use it!
                 start
                     .checked_add(len)
-                    .ok_or_else(|| anyhow!("overflow w/ symbol range"))?
+                    .ok_or(anyhow!("overflow w/ symbol range"))?
             } else {
                 // If we don't have one, the length of the current function is basically up to
                 // the next entry.
