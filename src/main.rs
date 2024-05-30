@@ -1,8 +1,10 @@
 // Axel '0vercl0k' Souchet - February 19 2024
 #![doc = include_str!("../README.md")]
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{stdout, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use std::{env, fs, io};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -11,8 +13,88 @@ use kdmp_parser::KernelDumpParser;
 use symbolizer::Symbolizer;
 
 mod hex_addrs_iter;
+mod human;
 
 use hex_addrs_iter::HexAddressesIterator;
+use human::ToHuman;
+
+#[derive(Debug)]
+struct StatsBuilder {
+    start: Instant,
+    n_files: u64,
+    n_lines: u64,
+}
+
+impl Default for StatsBuilder {
+    fn default() -> Self {
+        Self {
+            start: Instant::now(),
+            n_files: 0,
+            n_lines: 0,
+        }
+    }
+}
+
+impl StatsBuilder {
+    pub fn start(&mut self) {
+        self.start = Instant::now();
+    }
+
+    pub fn done_file(&mut self, n: u64) {
+        self.n_files += 1;
+        self.n_lines += n;
+    }
+
+    pub fn stop(self, symbolizer: Symbolizer) -> Stats {
+        Stats {
+            time: self.start.elapsed().as_secs(),
+            n_files: self.n_files,
+            n_lines: self.n_lines,
+            symbolizer_stats: symbolizer.stats(),
+        }
+    }
+}
+
+struct Stats {
+    time: u64,
+    n_files: u64,
+    n_lines: u64,
+    symbolizer_stats: symbolizer::Stats,
+}
+
+impl Display for Stats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "✓ Successfully symbolized {} lines across {} files in {} ({}% cache hits",
+            self.n_lines.human_number(),
+            self.n_files.human_number(),
+            self.time.human_time(),
+            percentage(self.symbolizer_stats.cache_hit, self.n_lines)
+        )?;
+
+        if self.symbolizer_stats.size_downloaded > 0 {
+            writeln!(
+                f,
+                ", downloaded {} / {} PDBs)",
+                self.symbolizer_stats.size_downloaded.human_bytes(),
+                self.symbolizer_stats.n_downloads.human_number()
+            )
+        } else {
+            writeln!(f, ")")
+        }
+    }
+}
+
+/// Calculate a percentage value.
+pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
+    assert!(
+        how_many_total > 0,
+        "{how_many_total} needs to be bigger than 0"
+    );
+
+    ((how_many * 1_00) / how_many_total) as u32
+}
 
 /// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
 /// cache.
@@ -182,8 +264,6 @@ fn symbolize_file(
         line_number += 1;
     }
 
-    symbolizer.stats.done_file(lines_symbolized.try_into()?);
-
     Ok(lines_symbolized)
 }
 
@@ -231,7 +311,9 @@ fn main() -> Result<()> {
     // All right, ready to create the symbolizer.
     let mut symbolizer = Symbolizer::new(symcache, parser, args.symsrv.clone())?;
 
-    symbolizer.start_stopwatch();
+    let mut stats_builder = StatsBuilder::default();
+    stats_builder.start();
+
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize
         // every file inside that directory..
@@ -249,13 +331,14 @@ fn main() -> Result<()> {
     let total = paths.len();
     for (idx, path) in paths.into_iter().enumerate() {
         print!("\x1B[2K\r");
-        symbolize_file(&mut symbolizer, &path, &args)?;
+        let n = symbolize_file(&mut symbolizer, &path, &args)?;
+        stats_builder.done_file(n.try_into()?);
         print!("[{}/{total}] {} done", idx + 1, path.display());
         io::stdout().flush()?;
     }
 
     // Grab a few stats before exiting!
-    let stats = symbolizer.stop_stopwatch();
+    let stats = stats_builder.stop(symbolizer);
     println!("\x1B[2K\r{stats}");
 
     Ok(())

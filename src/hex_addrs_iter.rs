@@ -6,7 +6,7 @@
 use std::io::Read;
 use std::ops::RangeTo;
 
-use anyhow::{Result, Context, bail};
+use anyhow::{anyhow, bail, Context, Result};
 
 /// Fill a `buffer` starting at the offset `append_idx` and return the slice of
 /// data that was read. Also, return if EOF was hit or not.
@@ -232,7 +232,7 @@ where
             .with_context(|| anyhow!("failed to turn {addr_str:?} into an integer"))
         {
             Ok(o) => o,
-            Err(e) => return Some(Err(E::Misc(""))),
+            e => return Some(e),
         };
 
         // If we hit the EOF, let's record the last range of data we'll consume.

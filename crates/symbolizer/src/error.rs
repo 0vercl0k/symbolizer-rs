@@ -29,8 +29,6 @@ pub enum Error {
         pdb_url: String,
         e: Box<ureq::Error>,
     },
-    #[error("misc: {0}")]
-    Misc(Box<dyn std::error::Error>),
     #[error("the module path is either 0 or larger than reasonable")]
     CodeViewInvalidPath,
     #[error("kdmp parser")]

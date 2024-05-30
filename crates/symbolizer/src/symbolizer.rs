@@ -256,14 +256,8 @@ impl Symbolizer {
         })
     }
 
-    /// Start the stopwatch.
-    pub fn start_stopwatch(&self) {
-        self.stats.start()
-    }
-
-    /// Stop the stopwatch and get a copy of the [`Stats`].
-    pub fn stop_stopwatch(self) -> Stats {
-        self.stats.stop()
+    pub fn stats(self) -> Stats {
+        self.stats.build()
     }
 
     /// Get the [`PdbCache`] for a specified `addr`.
@@ -331,7 +325,7 @@ impl Symbolizer {
         // .. symbolize `addr`..
         let line = pdbcache
             .symbolize(module.rva(addr))
-            .map_err(|e| E::Misc(format!("failed to symbolize {addr:#x}: {e:?}").into()))?;
+            .with_context(|| format!("failed to symbolize {addr:#x}"))?;
 
         // .. and store the sym cache to be used for next time we need to symbolize an
         // address from this module.

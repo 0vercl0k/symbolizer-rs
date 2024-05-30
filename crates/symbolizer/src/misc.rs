@@ -5,16 +5,6 @@
 /// A relative address.
 pub type Rva = u32;
 
-/// Calculate a percentage value.
-pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
-    assert!(
-        how_many_total > 0,
-        "{how_many_total} needs to be bigger than 0"
-    );
-
-    ((how_many * 1_00) / how_many_total) as u32
-}
-
 /// Convert an `u64` into an hex string.
 ///
 /// Highly inspired by 'Fast unsigned integer to hex string' by Johnny Lee:
