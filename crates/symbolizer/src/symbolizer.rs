@@ -13,11 +13,11 @@ use std::rc::Rc;
 use anyhow::Context;
 use log::{debug, trace, warn};
 
+use crate::address_space::AddressSpace;
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
 use crate::pe::{PdbId, Pe};
-use crate::address_space::AddressSpace;
 use crate::stats::{Stats, StatsBuilder};
 use crate::{Error as E, Result};
 
@@ -241,11 +241,7 @@ where
         modules: Vec<Module>,
         addr_space: AS,
     ) -> Self {
-        let offline = match ureq::get("https://www.google.com/").call() {
-            Ok(_) => false,
-            Err(_) => true,
-        };
-
+        let offline = ureq::get("https://www.google.com/").call().is_err();
         if offline {
             println!("Turning on 'offline' mode as you seem to not have internet access..");
         }
@@ -386,10 +382,6 @@ where
         }
         .context("failed to write symbolized value to output")?;
 
-        output
-            .write_all(&[b'\n'])
-            .context("failed to write line feed modoff addr")?;
-
         Ok(())
     }
 
@@ -401,10 +393,6 @@ where
                 output
                     .write_all(sym.as_bytes())
                     .context("failed to write symbolized value to output")?;
-
-                output
-                    .write_all(&[b'\n'])
-                    .context("failed to write line feed")?;
 
                 Ok(())
             }

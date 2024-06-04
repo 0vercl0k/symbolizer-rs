@@ -16,6 +16,8 @@ pdb = "0.8"
 log = "0.4"
 msvc-demangler = "0.10"
 ureq = { version = "2.9", default-features = false, features = ["tls", "gzip"] }
-kdmp-parser = "0.2"
 thiserror = "1.0.61"
 anyhow = "1.0.86"
+
+[build-dependencies]
+kdmp-parser = "0.2"

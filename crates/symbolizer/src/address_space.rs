@@ -1,9 +1,7 @@
 // Axel '0vercl0k' Souchet - May 30 2024
 use core::slice;
-use std::{
-    io,
-    mem::{self, MaybeUninit},
-};
+use std::io;
+use std::mem::{self, MaybeUninit};
 
 pub trait AddressSpace {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize>;

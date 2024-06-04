@@ -1,7 +1,8 @@
 // Axel '0vercl0k' Souchet - May 30 2024
+use std::env::temp_dir;
+use std::fs::File;
 use std::io::{self, Read, Seek};
 use std::path::Path;
-use std::{env::temp_dir, fs::File};
 
 use symbolizer::{AddressSpace, Module, Symbolizer};
 
@@ -48,7 +49,7 @@ fn foo() {
     let mut buf = Vec::new();
     symb.full(&mut buf, 0x19_50).unwrap();
     assert_eq!(
-        String::from_utf8(buf).unwrap().trim_end(),
+        String::from_utf8(buf).unwrap(),
         "mrt100!GetManagedRuntimeService+0x0"
     );
 }

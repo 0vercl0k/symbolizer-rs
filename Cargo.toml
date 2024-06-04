@@ -17,7 +17,7 @@ clap = { version = "4.5", features = ["derive"] }
 symbolizer = { path = "crates/symbolizer" }
 env_logger = "0.11"
 itoa = "1.0"
-kdmp-parser = { version = "0.2", path = "../kdmp-parser-rs" }
+kdmp-parser = "0.2"
 
 [profile.release]
 debug = true

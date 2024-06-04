@@ -254,6 +254,8 @@ fn symbolize_file(
             )
         })?;
 
+        output.write_all(&[b'\n'])?;
+
         if lines_symbolized >= limit {
             println!(
                 "Hit maximum line limit {} for {}",
@@ -277,9 +279,7 @@ struct ParserWrapper {
 
 impl ParserWrapper {
     fn new(parser: KernelDumpParser) -> Self {
-        Self {
-            parser,
-        }
+        Self { parser }
     }
 }
 

@@ -4,7 +4,6 @@ use std::num::TryFromIntError;
 use std::path::PathBuf;
 use std::string::FromUtf8Error;
 
-use kdmp_parser::KdmpParserError;
 use pdb::PdbInternalSectionOffset;
 use thiserror::Error;
 
@@ -31,8 +30,6 @@ pub enum Error {
     },
     #[error("the module path is either 0 or larger than reasonable")]
     CodeViewInvalidPath,
-    #[error("kdmp parser")]
-    DumpParserError(#[from] KdmpParserError),
     #[error("{0}")]
     Anyhow(#[from] anyhow::Error),
 }

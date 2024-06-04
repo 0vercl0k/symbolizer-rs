@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use log::debug;
 
+use crate::address_space::AddressSpace;
 use crate::guid::Guid;
 use crate::misc::Rva;
-use crate::address_space::AddressSpace;
 use crate::{Error as E, Result};
 
 /// The IMAGE_DOS_HEADER.
@@ -233,7 +233,11 @@ pub fn array_offset(base: u64, rva_array: u32, idx: u32, entry_size: usize) -> O
 }
 
 /// Read a NULL terminated string from the dump file at a specific address.
-pub fn read_string(addr_space: &mut impl AddressSpace, mut addr: u64, max: usize) -> Result<Option<String>> {
+pub fn read_string(
+    addr_space: &mut impl AddressSpace,
+    mut addr: u64,
+    max: usize,
+) -> Result<Option<String>> {
     let mut s = String::new();
     let mut terminated = false;
     for _ in 0..max {
