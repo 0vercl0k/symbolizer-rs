@@ -10,7 +10,7 @@ use std::{env, fs, io};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use symbolizer::Symbolizer;
+use symbolizer::{AddressSpace, Module, Symbolizer};
 
 mod hex_addrs_iter;
 mod human;
@@ -45,7 +45,7 @@ impl StatsBuilder {
         self.n_lines += n;
     }
 
-    pub fn stop(self, symbolizer: Symbolizer) -> Stats {
+    pub fn stop(self, symbolizer: Symbolizer<ParserWrapper>) -> Stats {
         Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
@@ -74,14 +74,14 @@ impl Display for Stats {
         )?;
 
         if self.symbolizer_stats.size_downloaded > 0 {
-            writeln!(
+            write!(
                 f,
                 ", downloaded {} / {} PDBs)",
                 self.symbolizer_stats.size_downloaded.human_bytes(),
                 self.symbolizer_stats.n_downloads.human_number()
             )
         } else {
-            writeln!(f, ")")
+            write!(f, ")")
         }
     }
 }
@@ -145,7 +145,7 @@ struct CliArgs {
     skip: usize,
     /// The maximum amount of lines to process per file.
     #[arg(short, long, default_value = "20000000")]
-    max: Option<usize>,
+    limit: Option<usize>,
     /// The symbolization style (mod+offset or mod!f+offset).
     #[arg(long, default_value = "full")]
     style: SymbolStyle,
@@ -169,6 +169,9 @@ struct CliArgs {
     /// The size in bytes of the buffer used to read data from the input files.
     #[arg(long, default_value_t = 1024 * 1024)]
     in_buffer_size: usize,
+    /// Don't try to download PDBs off the network.
+    #[arg(long, default_value_t = false)]
+    offline: bool,
 }
 
 /// Create the output file from an input.
@@ -207,7 +210,7 @@ fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> 
 
 /// Process an input file and symbolize every line.
 fn symbolize_file(
-    symbolizer: &mut Symbolizer,
+    symbolizer: &mut Symbolizer<ParserWrapper>,
     trace_path: impl AsRef<Path>,
     args: &CliArgs,
 ) -> Result<usize> {
@@ -223,7 +226,7 @@ fn symbolize_file(
     let mut output = BufWriter::with_capacity(args.out_buffer_size, writer);
     let mut line_number = 1 + args.skip;
     let mut lines_symbolized = 1;
-    let max_line = args.max.unwrap_or(usize::MAX);
+    let limit = args.limit.unwrap_or(usize::MAX);
     let reader = BufReader::with_capacity(args.in_buffer_size, input);
     for addr in HexAddressesIterator::new(reader).skip(args.skip) {
         let addr = addr.with_context(|| {
@@ -251,10 +254,10 @@ fn symbolize_file(
             )
         })?;
 
-        if lines_symbolized >= max_line {
+        if lines_symbolized >= limit {
             println!(
                 "Hit maximum line limit {} for {}",
-                max_line,
+                limit,
                 trace_path.display()
             );
             break;
@@ -265,6 +268,33 @@ fn symbolize_file(
     }
 
     Ok(lines_symbolized)
+}
+
+#[derive(Debug)]
+struct ParserWrapper {
+    parser: KernelDumpParser,
+}
+
+impl ParserWrapper {
+    fn new(parser: KernelDumpParser) -> Self {
+        Self {
+            parser,
+        }
+    }
+}
+
+impl AddressSpace for ParserWrapper {
+    fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
+        self.parser
+            .virt_read(addr.into(), buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    }
+
+    fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>> {
+        self.parser
+            .try_virt_read(addr.into(), buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    }
 }
 
 fn main() -> Result<()> {
@@ -308,8 +338,23 @@ fn main() -> Result<()> {
         bail!("no sympath");
     };
 
+    let mut modules = Vec::new();
+    for (at, name) in parser.user_modules().chain(parser.kernel_modules()) {
+        let (_, filename) = name.rsplit_once('\\').unwrap_or((name, name));
+        modules.push(Module::new(
+            filename.to_string(),
+            at.start.into(),
+            at.end.into(),
+        ));
+    }
+
     // All right, ready to create the symbolizer.
-    let mut symbolizer = Symbolizer::new(symcache, parser, args.symsrv.clone())?;
+    let mut symbolizer = Symbolizer::new(
+        symcache,
+        args.symsrv.clone(),
+        modules,
+        ParserWrapper::new(parser),
+    );
 
     let mut stats_builder = StatsBuilder::default();
     stats_builder.start();

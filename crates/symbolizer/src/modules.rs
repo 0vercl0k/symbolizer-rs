@@ -16,9 +16,9 @@ pub struct Module {
 
 impl Module {
     /// Create a [`Module`].
-    pub fn new(name: String, start: u64, end: u64) -> Self {
+    pub fn new(name: impl Into<String>, start: u64, end: u64) -> Self {
         Module {
-            name,
+            name: name.into(),
             at: start..end,
         }
     }

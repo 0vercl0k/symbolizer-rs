@@ -6,15 +6,15 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context};
-use kdmp_parser::{Gva, KdmpParserError, KernelDumpParser};
 use log::debug;
 
 use crate::guid::Guid;
 use crate::misc::Rva;
+use crate::address_space::AddressSpace;
 use crate::{Error as E, Result};
 
 /// The IMAGE_DOS_HEADER.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C, packed(2))]
 pub struct ImageDosHeader {
     pub e_magic: u16,
@@ -39,7 +39,7 @@ pub struct ImageDosHeader {
 }
 
 /// The IMAGE_NT_HEADERS.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 struct NtHeaders {
     signature: u32,
@@ -47,7 +47,7 @@ struct NtHeaders {
 }
 
 /// The IMAGE_FILE_HEADER.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ImageFileHeader {
     pub machine: u16,
@@ -105,7 +105,7 @@ pub struct ImageOptionalHeader32 {
 }
 
 /// The IMAGE_OPTIONAL_HEADER64.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 #[repr(C, packed(4))]
 pub struct ImageOptionalHeader64 {
     pub magic: u16,
@@ -141,7 +141,7 @@ pub struct ImageOptionalHeader64 {
 }
 
 /// The IMAGE_DEBUG_DIRECTORY.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ImageDebugDirectory {
     pub characteristics: u32,
@@ -155,7 +155,7 @@ pub struct ImageDebugDirectory {
 }
 
 /// The IMAGE_EXPORT_DIRECTORY.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ImageExportDirectory {
     pub characteristics: u32,
@@ -172,7 +172,7 @@ pub struct ImageExportDirectory {
 }
 
 /// The code view information.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 #[repr(C)]
 pub struct Codeview {
     pub signature: u32,
@@ -233,15 +233,17 @@ pub fn array_offset(base: u64, rva_array: u32, idx: u32, entry_size: usize) -> O
 }
 
 /// Read a NULL terminated string from the dump file at a specific address.
-pub fn read_string(parser: &KernelDumpParser, addr: u64, max: usize) -> Result<String> {
+pub fn read_string(addr_space: &mut impl AddressSpace, mut addr: u64, max: usize) -> Result<Option<String>> {
     let mut s = String::new();
     let mut terminated = false;
-    let mut gva = Gva::new(addr);
     for _ in 0..max {
         let mut buf = [0];
-        parser
-            .virt_read_exact(gva, &mut buf)
-            .map_err(|_| anyhow!("failed reading null terminated string"))?;
+        let Some(()) = addr_space
+            .try_read_exact_at(addr, &mut buf)
+            .context("failed reading null terminated string")?
+        else {
+            return Ok(None);
+        };
 
         let c = buf[0];
         if c == 0 {
@@ -250,14 +252,14 @@ pub fn read_string(parser: &KernelDumpParser, addr: u64, max: usize) -> Result<S
         }
 
         s.push(c.into());
-        gva += 1.into();
+        addr += 1;
     }
 
     if !terminated && s.len() == max {
         s.push_str("...");
     }
 
-    Ok(s)
+    Ok(Some(s))
 }
 
 /// A parsed PE headers.
@@ -270,8 +272,64 @@ pub struct Pe {
 }
 
 impl Pe {
+    pub fn new(addr_space: &mut impl AddressSpace, base: u64) -> Result<Self> {
+        // All right let's parse the PE.
+        debug!("parsing PE @ {:#x}", base);
+
+        // Read the DOS/NT headers.
+        let dos_hdr = addr_space
+            .read_struct_at::<ImageDosHeader>(base)
+            .context("failed to read ImageDosHeader")?;
+        let nt_hdr_addr = base
+            .checked_add(dos_hdr.e_lfanew.try_into().unwrap())
+            .ok_or(anyhow!("overflow w/ e_lfanew"))?;
+        let nt_hdr = addr_space
+            .read_struct_at::<NtHeaders>(nt_hdr_addr)
+            .context("failed to read Ntheaders")?;
+
+        // Let's verify the signature..
+        if nt_hdr.signature != IMAGE_NT_SIGNATURE {
+            return Err(anyhow!("wrong PE signature for {base:#x}").into());
+        }
+
+        // ..and let's ignore non x64 PEs.
+        if nt_hdr.file_hdr.machine != IMAGE_FILE_MACHINE_AMD64 {
+            return Err(anyhow!("wrong architecture for {base:#x}").into());
+        }
+
+        // Now locate the optional header, and check that it looks big enough.
+        let opt_hdr_addr = nt_hdr_addr
+            .checked_add(mem::size_of_val(&nt_hdr).try_into().unwrap())
+            .ok_or(anyhow!("overflow w/ nt_hdr"))?;
+        let opt_hdr_size = nt_hdr.file_hdr.size_of_optional_header as usize;
+        debug!("parsing optional hdr @ {:#x}", opt_hdr_addr);
+
+        // If it's not big enough, let's bail.
+        if opt_hdr_size < mem::size_of::<ImageOptionalHeader64>() {
+            return Err(anyhow!("optional header's size is too small").into());
+        }
+
+        // Read the IMAGE_OPTIONAL_HEADER64.
+        let opt_hdr = addr_space
+            .read_struct_at::<ImageOptionalHeader64>(opt_hdr_addr)
+            .with_context(|| "failed to read ImageOptionalHeader64")?;
+
+        // Read the PDB information if there's any.
+        let pdb_id = Self::try_parse_debug_dir(addr_space, base, &opt_hdr)?;
+
+        // Read the EXPORT table if there's any.
+        let exports = match Self::try_parse_export_dir(addr_space, base, &opt_hdr) {
+            Ok(o) => o,
+            // Err(E::DumpParserError(KdmpParserError::AddrTranslation(_))) => None,
+            Err(e) => return Err(e),
+        }
+        .unwrap_or_default();
+
+        Ok(Self { pdb_id, exports })
+    }
+
     fn try_parse_debug_dir(
-        parser: &KernelDumpParser,
+        addr_space: &mut impl AddressSpace,
         base: u64,
         opt_hdr: &ImageOptionalHeader64,
     ) -> Result<Option<PdbId>> {
@@ -287,7 +345,7 @@ impl Pe {
             .checked_add(debug_data_dir.virtual_address.into())
             .ok_or(anyhow!("overflow w/ debug_data_dir"))?;
         let Some(debug_dir) =
-            parser.try_virt_read_struct::<ImageDebugDirectory>(debug_dir_addr.into())?
+            addr_space.try_read_struct_at::<ImageDebugDirectory>(debug_dir_addr)?
         else {
             debug!(
                 "failed to read ImageDebugDirectory {debug_dir_addr:#x} because of mem translation"
@@ -311,7 +369,7 @@ impl Pe {
         let codeview_addr = base
             .checked_add(debug_dir.address_of_raw_data.into())
             .ok_or(anyhow!("overflow w/ debug_dir"))?;
-        let Some(codeview) = parser.try_virt_read_struct::<Codeview>(codeview_addr.into())? else {
+        let Some(codeview) = addr_space.try_read_struct_at::<Codeview>(codeview_addr)? else {
             debug!("failed to read codeview {codeview_addr:#x} because of mem translation");
             return Ok(None);
         };
@@ -334,7 +392,7 @@ impl Pe {
         )
         .ok_or(anyhow!("overflow w/ debug_dir filename"))?;
 
-        let Some(amount) = parser.try_virt_read(file_name_addr.into(), &mut file_name)? else {
+        let Some(amount) = addr_space.try_read_at(file_name_addr, &mut file_name)? else {
             return Ok(None);
         };
 
@@ -354,7 +412,7 @@ impl Pe {
     }
 
     fn try_parse_export_dir(
-        parser: &KernelDumpParser,
+        addr_space: &mut impl AddressSpace,
         base: u64,
         opt_hdr: &ImageOptionalHeader64,
     ) -> Result<Option<Vec<(Rva, String)>>> {
@@ -371,7 +429,7 @@ impl Pe {
             .checked_add(u64::from(export_data_dir.virtual_address))
             .ok_or(anyhow!("export_data_dir"))?;
         let Some(export_dir) =
-            parser.try_virt_read_struct::<ImageExportDirectory>(export_dir_addr.into())?
+            addr_space.try_read_struct_at::<ImageExportDirectory>(export_dir_addr)?
         else {
             debug!("failed to read ImageExportDirectory {export_dir_addr:#x} because of mem translation");
             return Ok(None);
@@ -399,8 +457,8 @@ impl Pe {
             // Read the name RVA's..
             let name_rva_addr = array_offset(base, addr_of_names, name_idx, mem::size_of::<u32>())
                 .ok_or(anyhow!("name_rva_addr"))?;
-            let Some(name_rva) = parser
-                .try_virt_read_struct::<u32>(name_rva_addr.into())
+            let Some(name_rva) = addr_space
+                .try_read_struct_at::<u32>(name_rva_addr)
                 .with_context(|| "failed to read EAT's name array".to_string())?
             else {
                 debug!(
@@ -413,14 +471,17 @@ impl Pe {
                 .checked_add(name_rva.into())
                 .ok_or(anyhow!("overflow w/ name_addr"))?;
             // ..then read the string in memory.
-            let name = read_string(parser, name_addr, 64)?;
+            let Some(name) = read_string(addr_space, name_addr, 64)? else {
+                debug!("failed to read export's name #{name_idx}");
+                return Ok(None);
+            };
             names.push(name);
 
             // Read the ordinal.
             let ord_addr = array_offset(base, addr_of_ords, name_idx, mem::size_of::<u16>())
                 .ok_or(anyhow!("ord_addr"))?;
-            let Some(ord) = parser
-                .try_virt_read_struct::<u16>(ord_addr.into())
+            let Some(ord) = addr_space
+                .try_read_struct_at::<u16>(ord_addr)
                 .context("failed to read EAT's ord array")?
             else {
                 debug!("failed to read EAT's ord array {ord_addr:#x} because of mem translation");
@@ -447,8 +508,8 @@ impl Pe {
                 array_offset(base, addr_of_functs, addr_idx, mem::size_of::<u32>())
                     .ok_or(anyhow!("overflow w/ address_rva_addr"))?;
 
-            let Some(address_rva) = parser
-                .try_virt_read_struct::<u32>(address_rva_addr.into())
+            let Some(address_rva) = addr_space
+                .try_read_struct_at::<u32>(address_rva_addr)
                 .with_context(|| "failed to read EAT's address array".to_string())?
             else {
                 debug!("failed to read EAT's address array {address_rva_addr:#x} because of mem translation");
@@ -489,59 +550,5 @@ impl Pe {
         debug!("built table w/ {} entries", exports.len());
 
         Ok(Some(exports))
-    }
-
-    pub fn new(parser: &KernelDumpParser, base: u64) -> Result<Self> {
-        // All right let's parse the PE.
-        debug!("parsing PE @ {:#x}", base);
-
-        // Read the DOS/NT headers.
-        let dos_hdr = parser
-            .virt_read_struct::<ImageDosHeader>(base.into())
-            .with_context(|| "failed to read ImageDosHeader")?;
-        let nt_hdr_addr = base
-            .checked_add(dos_hdr.e_lfanew.try_into().unwrap())
-            .ok_or(anyhow!("overflow w/ e_lfanew"))?;
-        let nt_hdr = parser.virt_read_struct::<NtHeaders>(nt_hdr_addr.into())?;
-
-        // Let's verify the signature..
-        if nt_hdr.signature != IMAGE_NT_SIGNATURE {
-            return Err(anyhow!("wrong PE signature for {base:#x}").into());
-        }
-
-        // ..and let's ignore non x64 PEs.
-        if nt_hdr.file_hdr.machine != IMAGE_FILE_MACHINE_AMD64 {
-            return Err(anyhow!("wrong architecture for {base:#x}").into());
-        }
-
-        // Now locate the optional header, and check that it looks big enough.
-        let opt_hdr_addr = nt_hdr_addr
-            .checked_add(mem::size_of_val(&nt_hdr).try_into().unwrap())
-            .ok_or(anyhow!("overflow w/ nt_hdr"))?;
-        let opt_hdr_size = nt_hdr.file_hdr.size_of_optional_header as usize;
-        debug!("parsing optional hdr @ {:#x}", opt_hdr_addr);
-
-        // If it's not big enough, let's bail.
-        if opt_hdr_size < mem::size_of::<ImageOptionalHeader64>() {
-            return Err(anyhow!("optional header's size is too small").into());
-        }
-
-        // Read the IMAGE_OPTIONAL_HEADER64.
-        let opt_hdr = parser
-            .virt_read_struct::<ImageOptionalHeader64>(opt_hdr_addr.into())
-            .with_context(|| "failed to read ImageOptionalHeader64")?;
-
-        // Read the PDB information if there's any.
-        let pdb_id = Self::try_parse_debug_dir(parser, base, &opt_hdr)?;
-
-        // Read the EXPORT table if there's any.
-        let exports = match Self::try_parse_export_dir(parser, base, &opt_hdr) {
-            Ok(o) => o,
-            Err(E::DumpParserError(KdmpParserError::AddrTranslation(_))) => None,
-            Err(e) => return Err(e),
-        }
-        .unwrap_or_default();
-
-        Ok(Self { pdb_id, exports })
     }
 }

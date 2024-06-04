@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::Context;
-use kdmp_parser::KernelDumpParser;
 use log::{debug, trace, warn};
 
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
 use crate::pe::{PdbId, Pe};
+use crate::address_space::AddressSpace;
 use crate::stats::{Stats, StatsBuilder};
 use crate::{Error as E, Result};
 
@@ -93,7 +93,7 @@ pub fn try_download_from_guid(
                 return Err(E::DownloadPdb {
                     pdb_url,
                     e: e.into(),
-                })
+                });
             }
         };
 
@@ -143,6 +143,7 @@ fn get_pdb(
     sympath: &Path,
     symsrvs: &Vec<String>,
     pdb_id: &PdbId,
+    offline: bool,
 ) -> Result<Option<(PathBuf, PdbKind)>> {
     // Let's see if the path exists locally..
     if pdb_id.path.is_file() {
@@ -157,7 +158,12 @@ fn get_pdb(
         return Ok(Some((local_path, PdbKind::LocalCache)));
     }
 
-    // The last resort is to try to download it...
+    // If we're offline, let's just skip the downloading part.
+    if offline {
+        return Ok(None);
+    }
+
+    // We didn't find a PDB on disk, so last resort is to try to download it.
     let downloaded_path = try_download_from_guid(symsrvs, sympath, pdb_id)?;
 
     Ok(downloaded_path.map(|p| (p, PdbKind::Download)))
@@ -196,7 +202,10 @@ impl BuildHasher for IdentityHasher {
 /// The [`Symbolizer`] is the main object that glues all the logic.
 ///
 /// It downloads, parses PDB information, and symbolizes.
-pub struct Symbolizer {
+pub struct Symbolizer<AS>
+where
+    AS: AddressSpace,
+{
     /// Keep track of some statistics regarding the number of lines symbolized,
     /// PDB downloaded, etc.
     stats: StatsBuilder,
@@ -209,7 +218,7 @@ pub struct Symbolizer {
     /// The kernel dump parser. We need this to be able to read PDB identifiers
     /// out of the PE headers, as well as reading the export tables of those
     /// modules.
-    parser: KernelDumpParser,
+    addr_space: RefCell<AS>,
     /// List of symbol servers to try to download PDBs from when needed.
     symsrvs: Vec<String>,
     /// Caches addresses to symbols. This allows us to not have to symbolize an
@@ -218,42 +227,39 @@ pub struct Symbolizer {
     /// Each parsed module is stored in this cache. We parse PDBs, etc. only
     /// once and then the [`PdbCache`] is used to query.
     pdb_caches: RefCell<HashMap<Range<u64>, Rc<PdbCache>>>,
+    offline: bool,
 }
 
-impl Symbolizer {
+impl<AS> Symbolizer<AS>
+where
+    AS: AddressSpace,
+{
     /// Create a symbolizer.
-    ///
-    /// The `symcache` is used both for reading existing PDBs as well as writing
-    /// the newly downloaded ones, the `parser` is used to enumerate the kernel
-    /// / user modules loaded at the crash-dump time as well as reading PDB
-    /// identifiers off the modules' PE headers, and the HTTP symbol servers are
-    /// a list of servers that will get contacted to try to find one that knows
-    /// about a specific PDB file.
     pub fn new(
         symcache: impl AsRef<Path>,
-        parser: KernelDumpParser,
         symsrvs: Vec<String>,
-    ) -> Result<Self> {
-        // Read both the user & kernel modules from the dump file.
-        let mut modules = Vec::new();
-        for (at, name) in parser.user_modules().chain(parser.kernel_modules()) {
-            let (_, filename) = name.rsplit_once('\\').unwrap_or((name, name));
-            modules.push(Module::new(
-                filename.to_string(),
-                at.start.into(),
-                at.end.into(),
-            ));
+        modules: Vec<Module>,
+        addr_space: AS,
+    ) -> Self {
+        let offline = match ureq::get("https://www.google.com/").call() {
+            Ok(_) => false,
+            Err(_) => true,
+        };
+
+        if offline {
+            println!("Turning on 'offline' mode as you seem to not have internet access..");
         }
 
-        Ok(Self {
+        Self {
             stats: Default::default(),
             symcache: symcache.as_ref().to_path_buf(),
             modules: Modules::new(modules),
-            parser,
+            addr_space: RefCell::new(addr_space),
             symsrvs,
             addr_cache: Default::default(),
             pdb_caches: Default::default(),
-        })
+            offline,
+        }
     }
 
     pub fn stats(self) -> Stats {
@@ -297,7 +303,7 @@ impl Symbolizer {
 
         // Let's start by parsing the PE to get its exports, and PDB information if
         // there's any.
-        let pe = Pe::new(&self.parser, module.at.start)?;
+        let pe = Pe::new(&mut *self.addr_space.borrow_mut(), module.at.start)?;
 
         // Ingest the EAT.
         builder.ingest(pe.exports.into_iter());
@@ -307,7 +313,7 @@ impl Symbolizer {
 
         if let Some(pdb_id) = pe.pdb_id {
             // Try to get a PDB..
-            let pdb_path = get_pdb(&self.symcache, &self.symsrvs, &pdb_id)?;
+            let pdb_path = get_pdb(&self.symcache, &self.symsrvs, &pdb_id, self.offline)?;
 
             // .. and ingest it if we have one.
             if let Some((pdb_path, pdb_kind)) = pdb_path {
