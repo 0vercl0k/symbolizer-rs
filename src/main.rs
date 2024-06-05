@@ -244,8 +244,8 @@ fn symbolize_file(
         }
 
         match args.style {
-            SymbolStyle::Modoff => symbolizer.modoff(&mut output, addr),
-            SymbolStyle::Full => symbolizer.full(&mut output, addr),
+            SymbolStyle::Modoff => symbolizer.modoff(addr, &mut output),
+            SymbolStyle::Full => symbolizer.full(addr, &mut output),
         }
         .with_context(|| {
             format!(

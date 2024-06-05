@@ -365,7 +365,7 @@ where
 
     /// Symbolize `addr` in the `module+offset` style and write the result into
     /// `output`.
-    pub fn modoff(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
+    pub fn modoff(&mut self, addr: u64, output: &mut impl Write) -> Result<()> {
         let mut buffer = [0; 16];
         if let Some(module) = self.modules.find(addr) {
             output.write_all(module.name.as_bytes())?;
@@ -387,7 +387,7 @@ where
 
     /// Symbolize `addr` in the `module!function+offset` style and write the
     /// result into `output`.
-    pub fn full(&mut self, output: &mut impl Write, addr: u64) -> Result<()> {
+    pub fn full(&mut self, addr: u64, output: &mut impl Write) -> Result<()> {
         match self.try_symbolize_addr(addr)? {
             Some(sym) => {
                 output
@@ -396,7 +396,7 @@ where
 
                 Ok(())
             }
-            None => self.modoff(output, addr),
+            None => self.modoff(addr, output),
         }
     }
 }
