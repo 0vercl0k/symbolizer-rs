@@ -23,7 +23,7 @@ impl Module {
         }
     }
 
-    /// Calculate an [`Rva`] from an `addr` contained in this module.
+    /// Calculate an rva from an `addr` contained in this module.
     pub fn rva(&self, addr: u64) -> Rva {
         debug_assert!(self.at.contains(&addr));
 
