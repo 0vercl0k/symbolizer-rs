@@ -9,11 +9,16 @@ pub struct StatsBuilder {
     inner: RefCell<Stats>,
 }
 
+/// Various statistics that the symbolizer keeps track of.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Stats {
-    pub n_lines: u64,
+    /// The number of addresses symbolized.
+    pub n_addrs: u64,
+    /// The number of downloaded PDB files.
     pub n_downloads: u64,
+    /// The total size in bytes of downloads.
     pub size_downloaded: u64,
+    /// The number of time the address cache was a hit.
     pub cache_hit: u64,
 }
 
@@ -26,6 +31,10 @@ impl StatsBuilder {
         let mut inner = self.inner.borrow_mut();
         inner.n_downloads += 1;
         inner.size_downloaded += size;
+    }
+
+    pub fn addr_symbolized(&self) {
+        self.inner.borrow_mut().n_addrs += 1;
     }
 
     pub fn cache_hit(&self) {

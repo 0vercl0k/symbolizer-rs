@@ -206,7 +206,7 @@ pub struct Symbolizer<AS>
 where
     AS: AddrSpace,
 {
-    /// Keep track of some statistics regarding the number of lines symbolized,
+    /// Keep track of some statistics such as the number of lines symbolized,
     /// PDB downloaded, etc.
     stats: StatsBuilder,
     /// This is a path to the local PDB symbol cache where PDBs will be
@@ -234,7 +234,7 @@ impl<AS> Symbolizer<AS>
 where
     AS: AddrSpace,
 {
-    /// Create a symbolizer.
+    /// Create a [`Symbolizer`].
     pub fn new(
         symcache: &impl AsRef<Path>,
         symsrvs: Vec<String>,
@@ -258,6 +258,7 @@ where
         }
     }
 
+    /// Get [`Stats`].
     pub fn stats(self) -> Stats {
         self.stats.build()
     }
@@ -382,6 +383,8 @@ where
         }
         .context("failed to write symbolized value to output")?;
 
+        self.stats.addr_symbolized();
+
         Ok(())
     }
 
@@ -394,6 +397,7 @@ where
                     .write_all(sym.as_bytes())
                     .context("failed to write symbolized value to output")?;
 
+                self.stats.addr_symbolized();
                 Ok(())
             }
             None => self.modoff(addr, output),

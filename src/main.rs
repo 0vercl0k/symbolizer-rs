@@ -22,7 +22,6 @@ use human::ToHuman;
 struct StatsBuilder {
     start: Instant,
     n_files: u64,
-    n_lines: u64,
 }
 
 impl Default for StatsBuilder {
@@ -30,26 +29,19 @@ impl Default for StatsBuilder {
         Self {
             start: Instant::now(),
             n_files: 0,
-            n_lines: 0,
         }
     }
 }
 
 impl StatsBuilder {
-    pub fn start(&mut self) {
-        self.start = Instant::now();
-    }
-
-    pub fn done_file(&mut self, n: u64) {
+    pub fn done_file(&mut self) {
         self.n_files += 1;
-        self.n_lines += n;
     }
 
     pub fn stop(self, symbolizer: Symbolizer<ParserWrapper>) -> Stats {
         Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
-            n_lines: self.n_lines,
             symbolizer_stats: symbolizer.stats(),
         }
     }
@@ -58,7 +50,6 @@ impl StatsBuilder {
 struct Stats {
     time: u64,
     n_files: u64,
-    n_lines: u64,
     symbolizer_stats: symbolizer::Stats,
 }
 
@@ -67,10 +58,10 @@ impl Display for Stats {
         write!(
             f,
             "✓ Successfully symbolized {} lines across {} files in {} ({}% cache hits",
-            self.n_lines.human_number(),
+            self.symbolizer_stats.n_addrs.human_number(),
             self.n_files.human_number(),
             self.time.human_time(),
-            percentage(self.symbolizer_stats.cache_hit, self.n_lines)
+            percentage(self.symbolizer_stats.cache_hit, self.symbolizer_stats.n_addrs)
         )?;
 
         if self.symbolizer_stats.size_downloaded > 0 {
@@ -356,9 +347,6 @@ fn main() -> Result<()> {
         ParserWrapper::new(parser),
     );
 
-    let mut stats_builder = StatsBuilder::default();
-    stats_builder.start();
-
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize
         // every file inside that directory..
@@ -373,11 +361,12 @@ fn main() -> Result<()> {
         vec![args.trace.clone()]
     };
 
+    let mut stats_builder = StatsBuilder::default();
     let total = paths.len();
     for (idx, path) in paths.into_iter().enumerate() {
         print!("\x1B[2K\r");
-        let n = symbolize_file(&mut symbolizer, &path, &args)?;
-        stats_builder.done_file(n.try_into()?);
+        symbolize_file(&mut symbolizer, &path, &args)?;
+        stats_builder.done_file();
         print!("[{}/{total}] {} done", idx + 1, path.display());
         io::stdout().flush()?;
     }
