@@ -61,7 +61,10 @@ impl Display for Stats {
             self.symbolizer_stats.n_addrs.human_number(),
             self.n_files.human_number(),
             self.time.human_time(),
-            percentage(self.symbolizer_stats.cache_hit, self.symbolizer_stats.n_addrs)
+            percentage(
+                self.symbolizer_stats.cache_hit,
+                self.symbolizer_stats.n_addrs
+            )
         )?;
 
         if self.symbolizer_stats.size_downloaded > 0 {
