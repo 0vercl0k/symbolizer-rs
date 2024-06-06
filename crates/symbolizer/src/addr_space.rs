@@ -3,7 +3,7 @@ use core::slice;
 use std::io;
 use std::mem::{self, MaybeUninit};
 
-pub trait AddressSpace {
+pub trait AddrSpace {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize>;
 
     fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>>;

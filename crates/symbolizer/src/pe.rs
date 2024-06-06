@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use log::debug;
 
-use crate::address_space::AddressSpace;
+use crate::addr_space::AddrSpace;
 use crate::guid::Guid;
 use crate::misc::Rva;
 use crate::{Error as E, Result};
@@ -234,7 +234,7 @@ pub fn array_offset(base: u64, rva_array: u32, idx: u32, entry_size: usize) -> O
 
 /// Read a NULL terminated string from the dump file at a specific address.
 pub fn read_string(
-    addr_space: &mut impl AddressSpace,
+    addr_space: &mut impl AddrSpace,
     mut addr: u64,
     max: usize,
 ) -> Result<Option<String>> {
@@ -276,7 +276,7 @@ pub struct Pe {
 }
 
 impl Pe {
-    pub fn new(addr_space: &mut impl AddressSpace, base: u64) -> Result<Self> {
+    pub fn new(addr_space: &mut impl AddrSpace, base: u64) -> Result<Self> {
         // All right let's parse the PE.
         debug!("parsing PE @ {:#x}", base);
 
@@ -333,7 +333,7 @@ impl Pe {
     }
 
     fn try_parse_debug_dir(
-        addr_space: &mut impl AddressSpace,
+        addr_space: &mut impl AddrSpace,
         base: u64,
         opt_hdr: &ImageOptionalHeader64,
     ) -> Result<Option<PdbId>> {
@@ -416,7 +416,7 @@ impl Pe {
     }
 
     fn try_parse_export_dir(
-        addr_space: &mut impl AddressSpace,
+        addr_space: &mut impl AddrSpace,
         base: u64,
         opt_hdr: &ImageOptionalHeader64,
     ) -> Result<Option<Vec<(Rva, String)>>> {

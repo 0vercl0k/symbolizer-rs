@@ -10,7 +10,7 @@ use std::{env, fs, io};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use symbolizer::{AddressSpace, Module, Symbolizer};
+use symbolizer::{AddrSpace, Module, Symbolizer};
 
 mod hex_addrs_iter;
 mod human;
@@ -283,7 +283,7 @@ impl ParserWrapper {
     }
 }
 
-impl AddressSpace for ParserWrapper {
+impl AddrSpace for ParserWrapper {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
         self.parser
             .virt_read(addr.into(), buf)
@@ -350,7 +350,7 @@ fn main() -> Result<()> {
 
     // All right, ready to create the symbolizer.
     let mut symbolizer = Symbolizer::new(
-        symcache,
+        &symcache,
         args.symsrv.clone(),
         modules,
         ParserWrapper::new(parser),

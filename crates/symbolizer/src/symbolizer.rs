@@ -13,7 +13,7 @@ use std::rc::Rc;
 use anyhow::Context;
 use log::{debug, trace, warn};
 
-use crate::address_space::AddressSpace;
+use crate::addr_space::AddrSpace;
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
@@ -204,7 +204,7 @@ impl BuildHasher for IdentityHasher {
 /// It downloads, parses PDB information, and symbolizes.
 pub struct Symbolizer<AS>
 where
-    AS: AddressSpace,
+    AS: AddrSpace,
 {
     /// Keep track of some statistics regarding the number of lines symbolized,
     /// PDB downloaded, etc.
@@ -232,18 +232,18 @@ where
 
 impl<AS> Symbolizer<AS>
 where
-    AS: AddressSpace,
+    AS: AddrSpace,
 {
     /// Create a symbolizer.
     pub fn new(
-        symcache: impl AsRef<Path>,
+        symcache: &impl AsRef<Path>,
         symsrvs: Vec<String>,
         modules: Vec<Module>,
         addr_space: AS,
     ) -> Self {
         let offline = ureq::get("https://www.google.com/").call().is_err();
         if offline {
-            println!("Turning on 'offline' mode as you seem to not have internet access..");
+            debug!("Turning on 'offline' mode as you seem to not have internet access..");
         }
 
         Self {
