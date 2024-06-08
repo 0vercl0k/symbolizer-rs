@@ -10,7 +10,7 @@ use std::{env, fs, io};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use symbolizer::{AddrSpace, Module, Symbolizer};
+use symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
 
 mod hex_addrs_iter;
 mod human;
@@ -38,7 +38,7 @@ impl StatsBuilder {
         self.n_files += 1;
     }
 
-    pub fn stop(self, symbolizer: Symbolizer<ParserWrapper>) -> Stats {
+    pub fn stop(self, symbolizer: KernelDumpSymbolizer) -> Stats {
         Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
@@ -80,34 +80,32 @@ impl Display for Stats {
     }
 }
 
-/// Calculate a percentage value.
-pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
-    assert!(
-        how_many_total > 0,
-        "{how_many_total} needs to be bigger than 0"
-    );
-
-    ((how_many * 1_00) / how_many_total) as u32
+#[derive(Debug)]
+struct ParserWrapper {
+    parser: KernelDumpParser,
 }
 
-/// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
-/// cache.
-fn sympath() -> Option<PathBuf> {
-    let env = env::var("_NT_SYMBOL_PATH").ok()?;
-
-    if !env.starts_with("srv*") {
-        return None;
-    }
-
-    let sympath = env.strip_prefix("srv*").unwrap();
-    let sympath = PathBuf::from(sympath.split('*').next().unwrap());
-
-    if sympath.is_dir() {
-        Some(sympath)
-    } else {
-        None
+impl ParserWrapper {
+    fn new(parser: KernelDumpParser) -> Self {
+        Self { parser }
     }
 }
+
+impl AddrSpace for ParserWrapper {
+    fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
+        self.parser
+            .virt_read(addr.into(), buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    }
+
+    fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>> {
+        self.parser
+            .try_virt_read(addr.into(), buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
+    }
+}
+
+type KernelDumpSymbolizer = Symbolizer<ParserWrapper>;
 
 /// The style of the symbols.
 #[derive(Default, Debug, Clone, ValueEnum)]
@@ -168,6 +166,35 @@ struct CliArgs {
     offline: bool,
 }
 
+/// Calculate a percentage value.
+pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
+    assert!(
+        how_many_total > 0,
+        "{how_many_total} needs to be bigger than 0"
+    );
+
+    ((how_many * 1_00) / how_many_total) as u32
+}
+
+/// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
+/// cache.
+fn sympath() -> Option<PathBuf> {
+    let env = env::var("_NT_SYMBOL_PATH").ok()?;
+
+    if !env.starts_with("srv*") {
+        return None;
+    }
+
+    let sympath = env.strip_prefix("srv*").unwrap();
+    let sympath = PathBuf::from(sympath.split('*').next().unwrap());
+
+    if sympath.is_dir() {
+        Some(sympath)
+    } else {
+        None
+    }
+}
+
 /// Create the output file from an input.
 ///
 /// This logic was moved into a function to be able to handle the `--overwrite`
@@ -204,7 +231,7 @@ fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> 
 
 /// Process an input file and symbolize every line.
 fn symbolize_file(
-    symbolizer: &mut Symbolizer<ParserWrapper>,
+    symbolizer: &mut KernelDumpSymbolizer,
     trace_path: impl AsRef<Path>,
     args: &CliArgs,
 ) -> Result<usize> {
@@ -266,31 +293,6 @@ fn symbolize_file(
     Ok(lines_symbolized)
 }
 
-#[derive(Debug)]
-struct ParserWrapper {
-    parser: KernelDumpParser,
-}
-
-impl ParserWrapper {
-    fn new(parser: KernelDumpParser) -> Self {
-        Self { parser }
-    }
-}
-
-impl AddrSpace for ParserWrapper {
-    fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
-        self.parser
-            .virt_read(addr.into(), buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    }
-
-    fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>> {
-        self.parser
-            .try_virt_read(addr.into(), buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    }
-}
-
 fn main() -> Result<()> {
     #[cfg(debug_assertions)]
     env_logger::init();
@@ -343,12 +345,11 @@ fn main() -> Result<()> {
     }
 
     // All right, ready to create the symbolizer.
-    let mut symbolizer = Symbolizer::new(
-        &symcache,
-        args.symsrv.clone(),
-        modules,
-        ParserWrapper::new(parser),
-    );
+    let mut symbolizer = SymbolizerBuilder::default()
+        .online(args.symsrv.iter())
+        .modules(modules.into_iter())
+        .symcache(&symcache)
+        .build(ParserWrapper::new(parser))?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize

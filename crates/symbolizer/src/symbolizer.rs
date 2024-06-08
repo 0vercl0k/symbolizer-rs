@@ -10,10 +10,11 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use log::{debug, trace, warn};
 
 use crate::addr_space::AddrSpace;
+use crate::builder::{Builder, NoSymcache, Offline};
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
@@ -199,6 +200,29 @@ impl BuildHasher for IdentityHasher {
     }
 }
 
+#[derive(Debug, Default)]
+pub enum PdbLookupMode {
+    #[default]
+    Offline,
+    Online {
+        /// List of symbol servers to try to download PDBs from when needed.
+        symcache: Vec<String>,
+    },
+}
+
+/// Configuration for the [`Symbolizer`].
+#[derive(Debug)]
+pub struct Config {
+    /// Path to the local PDB symbol cache where PDBs will be
+    /// downloaded into, or where we'll look for cached PDBs.
+    pub symcache: PathBuf,
+    /// This is the list of kernel / user modules read from the kernel crash
+    /// dump.
+    pub modules: Vec<Module>,
+    /// Which mode are we using for PDB lookups? Online or Offline?
+    pub mode: PdbLookupMode,
+}
+
 /// The [`Symbolizer`] is the main object that glues all the logic.
 ///
 /// It downloads, parses PDB information, and symbolizes.
@@ -234,32 +258,49 @@ impl<AS> Symbolizer<AS>
 where
     AS: AddrSpace,
 {
+    pub fn builder() -> Builder<NoSymcache, Offline> {
+        Builder::default()
+    }
+
     /// Create a [`Symbolizer`].
-    pub fn new(
-        symcache: &impl AsRef<Path>,
-        symsrvs: Vec<String>,
-        modules: Vec<Module>,
-        addr_space: AS,
-    ) -> Self {
-        let offline = ureq::get("https://www.google.com/").call().is_err();
-        if offline {
-            debug!("Turning on 'offline' mode as you seem to not have internet access..");
+    pub fn new(addr_space: AS, config: Config) -> Result<Self> {
+        let (offline, symsrvs) = match config.mode {
+            PdbLookupMode::Offline =>
+            // If the user wants offline, then let's do that..
+            {
+                (true, vec![])
+            }
+            PdbLookupMode::Online { symcache } => {
+                // ..otherwise, we'll try to resolve a DNS and see what happens. If we can't do
+                // that, then we'll assume we're offline and turn the offline mode.
+                // Otherwise, we'll assume we have online access and attempt to download PDBs.
+                let offline = ureq::get("https://www.google.com/").call().is_err();
+                if offline {
+                    debug!("Turning on 'offline' mode as you seem to not have internet access..");
+                }
+
+                (offline, symcache)
+            }
+        };
+
+        if !config.symcache.is_dir() {
+            return Err(anyhow!("{:?} directory does not exist", config.symcache))?;
         }
 
-        Self {
+        Ok(Self {
             stats: Default::default(),
-            symcache: symcache.as_ref().to_path_buf(),
-            modules: Modules::new(modules),
+            symcache: config.symcache,
+            modules: Modules::new(config.modules),
             addr_space: RefCell::new(addr_space),
             symsrvs,
             addr_cache: Default::default(),
             pdb_caches: Default::default(),
             offline,
-        }
+        })
     }
 
     /// Get [`Stats`].
-    pub fn stats(self) -> Stats {
+    pub fn stats(&self) -> Stats {
         self.stats.build()
     }
 
@@ -306,9 +347,9 @@ where
         builder.ingest(pe.exports.into_iter());
 
         // .. and see if it has PDB information.
-        trace!("Get PDB information for {module:?}..");
-
         if let Some(pdb_id) = pe.pdb_id {
+            trace!("Get PDB information for {module:?}/{pdb_id}..");
+
             // Try to get a PDB..
             let pdb_path = get_pdb(&self.symcache, &self.symsrvs, &pdb_id, self.offline)?;
 
