@@ -81,17 +81,17 @@ impl Display for Stats {
 }
 
 #[derive(Debug)]
-struct ParserWrapper {
+struct AddrSpaceWrapper {
     parser: KernelDumpParser,
 }
 
-impl ParserWrapper {
+impl AddrSpaceWrapper {
     fn new(parser: KernelDumpParser) -> Self {
         Self { parser }
     }
 }
 
-impl AddrSpace for ParserWrapper {
+impl AddrSpace for AddrSpaceWrapper {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
         self.parser
             .virt_read(addr.into(), buf)
@@ -105,7 +105,7 @@ impl AddrSpace for ParserWrapper {
     }
 }
 
-type KernelDumpSymbolizer = Symbolizer<ParserWrapper>;
+type KernelDumpSymbolizer = Symbolizer<AddrSpaceWrapper>;
 
 /// The style of the symbols.
 #[derive(Default, Debug, Clone, ValueEnum)]
@@ -349,7 +349,7 @@ fn main() -> Result<()> {
         .online(args.symsrv.iter())
         .modules(modules.into_iter())
         .symcache(&symcache)
-        .build(ParserWrapper::new(parser))?;
+        .build(AddrSpaceWrapper::new(parser))?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize

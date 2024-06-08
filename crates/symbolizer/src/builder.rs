@@ -9,6 +9,7 @@ pub struct NoSymcache;
 
 pub struct Symcache(PathBuf);
 
+/// Builder for [`Symbolizer`].
 #[derive(Default, Debug)]
 pub struct Builder<SC, M> {
     symcache: SC,
