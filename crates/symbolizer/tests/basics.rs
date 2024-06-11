@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use object::read::pe::PeFile64;
 use object::{NativeEndian, ReadCache, ReadRef};
-use symbolizer::{AddrSpace, Builder, Guid, Module, PdbId};
+use symbolizer::{AddrSpace, Builder, Module, PdbId};
 use udmp_parser::UserDumpParser;
 
 const EXPECTED_LEN: u64 = 0x90_00;
@@ -219,7 +219,7 @@ impl<'a> AddrSpace for UserDumpAddrSpace<'a> {
 
             let left = buf.len() - read_len;
             let len = min(data.len(), left);
-            buf.write(&data[..len]).unwrap();
+            buf.write_all(&data[..len]).unwrap();
             cur_addr += u64::try_from(len).unwrap();
             read_len += len;
         }

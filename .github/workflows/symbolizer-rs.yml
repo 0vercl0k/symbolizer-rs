@@ -32,7 +32,7 @@ jobs:
       - name: cargo clippy
         env:
           RUSTFLAGS: "-Dwarnings"
-        run: cargo clippy --workspace
+        run: cargo clippy --workspace --tests
 
   doc:
     name: doc
