@@ -11,18 +11,14 @@ pub struct Symcache(PathBuf);
 
 /// Builder for [`Symbolizer`].
 #[derive(Default, Debug)]
-pub struct Builder<SC, M> {
+pub struct Builder<SC> {
     symcache: SC,
     modules: Vec<Module>,
-    mode: M,
+    mode: PdbLookupMode,
 }
 
-#[derive(Default)]
-pub struct Offline;
-pub struct Online(Vec<String>);
-
-impl<SC> Builder<SC, Offline> {
-    pub fn online(self, symsrvs: impl Iterator<Item = impl Into<String>>) -> Builder<SC, Online> {
+impl<SC> Builder<SC> {
+    pub fn msft_symsrv(self) -> Builder<SC> {
         let Self {
             symcache, modules, ..
         } = self;
@@ -30,13 +26,29 @@ impl<SC> Builder<SC, Offline> {
         Builder {
             symcache,
             modules,
-            mode: Online(symsrvs.map(Into::into).collect()),
+            mode: PdbLookupMode::Online {
+                symsrvs: vec!["https://msdl.microsoft.com/download/symbols/".into()],
+            },
+        }
+    }
+
+    pub fn online(self, symsrvs: impl Iterator<Item = impl Into<String>>) -> Builder<SC> {
+        let Self {
+            symcache, modules, ..
+        } = self;
+
+        Builder {
+            symcache,
+            modules,
+            mode: PdbLookupMode::Online {
+                symsrvs: symsrvs.map(Into::into).collect(),
+            },
         }
     }
 }
 
-impl<M> Builder<NoSymcache, M> {
-    pub fn symcache(self, cache: &impl AsRef<Path>) -> Builder<Symcache, M> {
+impl Builder<NoSymcache> {
+    pub fn symcache(self, cache: &impl AsRef<Path>) -> Builder<Symcache> {
         let Self { modules, mode, .. } = self;
 
         Builder {
@@ -47,34 +59,16 @@ impl<M> Builder<NoSymcache, M> {
     }
 }
 
-impl<SC, M> Builder<SC, M> {
-    pub fn modules(mut self, modules: impl Iterator<Item = Module>) -> Self {
-        self.modules = modules.collect();
+impl<SC> Builder<SC> {
+    pub fn modules<'a>(mut self, modules: impl IntoIterator<Item = &'a Module>) -> Self {
+        self.modules = modules.into_iter().cloned().collect();
 
         self
     }
 }
 
-impl Builder<Symcache, Offline> {
-    pub fn build<AS>(self, addr_space: AS) -> Result<Symbolizer<AS>>
-    where
-        AS: AddrSpace,
-    {
-        let Self {
-            symcache, modules, ..
-        } = self;
-        let config = Config {
-            symcache: symcache.0,
-            modules,
-            mode: PdbLookupMode::Offline,
-        };
-
-        Symbolizer::new(addr_space, config)
-    }
-}
-
-impl Builder<Symcache, Online> {
-    pub fn build<AS>(self, addr_space: AS) -> Result<Symbolizer<AS>>
+impl Builder<Symcache> {
+    pub fn build<AS>(self, addr_space: &mut AS) -> Result<Symbolizer<AS>>
     where
         AS: AddrSpace,
     {
@@ -86,7 +80,7 @@ impl Builder<Symcache, Online> {
         let config = Config {
             symcache: symcache.0,
             modules,
-            mode: PdbLookupMode::Online { symcache: mode.0 },
+            mode,
         };
 
         Symbolizer::new(addr_space, config)

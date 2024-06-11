@@ -192,7 +192,7 @@ pub const IMAGE_DEBUG_TYPE_CODEVIEW: u32 = 2;
 ///
 /// To download a PDB off Microsoft's Symbol Server, we need three pieces of
 /// information: the pdb name, a guid and its age.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq, Hash, Clone)]
 pub struct PdbId {
     pub path: PathBuf,
     pub guid: Guid,
@@ -206,7 +206,8 @@ impl Display for PdbId {
 }
 
 impl PdbId {
-    pub fn new(path: PathBuf, guid: Guid, age: u32) -> Result<Self> {
+    pub fn new(path: impl Into<PathBuf>, guid: Guid, age: u32) -> Result<Self> {
+        let path = path.into();
         if path.file_name().is_none() {
             return Err(E::PdbPathNoName(path));
         }

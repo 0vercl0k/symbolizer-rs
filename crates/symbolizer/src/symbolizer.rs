@@ -14,7 +14,7 @@ use anyhow::{anyhow, Context};
 use log::{debug, trace, warn};
 
 use crate::addr_space::AddrSpace;
-use crate::builder::{Builder, NoSymcache, Offline};
+use crate::builder::{Builder, NoSymcache};
 use crate::misc::{fast_hex32, fast_hex64};
 use crate::modules::{Module, Modules};
 use crate::pdbcache::{PdbCache, PdbCacheBuilder};
@@ -206,7 +206,7 @@ pub enum PdbLookupMode {
     Offline,
     Online {
         /// List of symbol servers to try to download PDBs from when needed.
-        symcache: Vec<String>,
+        symsrvs: Vec<String>,
     },
 }
 
@@ -226,7 +226,7 @@ pub struct Config {
 /// The [`Symbolizer`] is the main object that glues all the logic.
 ///
 /// It downloads, parses PDB information, and symbolizes.
-pub struct Symbolizer<AS>
+pub struct Symbolizer<'a, AS>
 where
     AS: AddrSpace,
 {
@@ -242,7 +242,7 @@ where
     /// The kernel dump parser. We need this to be able to read PDB identifiers
     /// out of the PE headers, as well as reading the export tables of those
     /// modules.
-    addr_space: RefCell<AS>,
+    addr_space: RefCell<&'a mut AS>,
     /// List of symbol servers to try to download PDBs from when needed.
     symsrvs: Vec<String>,
     /// Caches addresses to symbols. This allows us to not have to symbolize an
@@ -254,23 +254,23 @@ where
     offline: bool,
 }
 
-impl<AS> Symbolizer<AS>
+impl<'a, AS> Symbolizer<'a, AS>
 where
     AS: AddrSpace,
 {
-    pub fn builder() -> Builder<NoSymcache, Offline> {
+    pub fn builder() -> Builder<NoSymcache> {
         Builder::default()
     }
 
     /// Create a [`Symbolizer`].
-    pub fn new(addr_space: AS, config: Config) -> Result<Self> {
+    pub fn new(addr_space: &'a mut AS, config: Config) -> Result<Self> {
         let (offline, symsrvs) = match config.mode {
             PdbLookupMode::Offline =>
             // If the user wants offline, then let's do that..
             {
                 (true, vec![])
             }
-            PdbLookupMode::Online { symcache } => {
+            PdbLookupMode::Online { symsrvs } => {
                 // ..otherwise, we'll try to resolve a DNS and see what happens. If we can't do
                 // that, then we'll assume we're offline and turn the offline mode.
                 // Otherwise, we'll assume we have online access and attempt to download PDBs.
@@ -279,7 +279,7 @@ where
                     debug!("Turning on 'offline' mode as you seem to not have internet access..");
                 }
 
-                (offline, symcache)
+                (offline, symsrvs)
             }
         };
 
@@ -341,7 +341,7 @@ where
 
         // Let's start by parsing the PE to get its exports, and PDB information if
         // there's any.
-        let pe = Pe::new(&mut *self.addr_space.borrow_mut(), module.at.start)?;
+        let pe = Pe::new(*self.addr_space.borrow_mut(), module.at.start)?;
 
         // Ingest the EAT.
         builder.ingest(pe.exports.into_iter());
@@ -356,7 +356,8 @@ where
             // .. and ingest it if we have one.
             if let Some((pdb_path, pdb_kind)) = pdb_path {
                 if matches!(pdb_kind, PdbKind::Download) {
-                    self.stats.downloaded_file(pdb_path.metadata()?.len())
+                    self.stats
+                        .downloaded_file(pdb_id, pdb_path.metadata()?.len())
                 }
 
                 builder.ingest_pdb(pdb_path)?;

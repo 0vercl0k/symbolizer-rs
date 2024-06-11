@@ -6,7 +6,7 @@ use std::ops::Range;
 use crate::misc::Rva;
 
 /// A user or kernel module.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Module {
     /// Where the module is loaded into virtual memory.
     pub at: Range<u64>,

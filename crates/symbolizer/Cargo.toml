@@ -22,4 +22,9 @@ anyhow = "1.0.86"
 [dev-dependencies]
 kdmp-parser = "0.2"
 udmp-parser = "0.2"
-object = {version = "0.36.0", default-features = false, features = ["read", "read_core", "pe", "std"]}
+object = { version = "0.36.0", default-features = false, features = [
+    "read",
+    "read_core",
+    "pe",
+    "std",
+] }

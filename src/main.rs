@@ -67,12 +67,13 @@ impl Display for Stats {
             )
         )?;
 
-        if self.symbolizer_stats.size_downloaded > 0 {
+        let size_downloaded = self.symbolizer_stats.amount_downloaded();
+        if size_downloaded > 0 {
             write!(
                 f,
                 ", downloaded {} / {} PDBs)",
-                self.symbolizer_stats.size_downloaded.human_bytes(),
-                self.symbolizer_stats.n_downloads.human_number()
+                size_downloaded.human_bytes(),
+                self.symbolizer_stats.amount_pdb_downloaded().human_number()
             )
         } else {
             write!(f, ")")
@@ -105,7 +106,7 @@ impl AddrSpace for AddrSpaceWrapper {
     }
 }
 
-type KernelDumpSymbolizer = Symbolizer<AddrSpaceWrapper>;
+type KernelDumpSymbolizer<'a> = Symbolizer<'a, AddrSpaceWrapper>;
 
 /// The style of the symbols.
 #[derive(Default, Debug, Clone, ValueEnum)]
@@ -345,11 +346,12 @@ fn main() -> Result<()> {
     }
 
     // All right, ready to create the symbolizer.
+    let mut wrapper = AddrSpaceWrapper::new(parser);
     let mut symbolizer = SymbolizerBuilder::default()
         .online(args.symsrv.iter())
-        .modules(modules.into_iter())
+        .modules(&modules)
         .symcache(&symcache)
-        .build(AddrSpaceWrapper::new(parser))?;
+        .build(&mut wrapper)?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize

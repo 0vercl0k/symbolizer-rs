@@ -24,7 +24,7 @@ pub trait ToHuman: Sized + Copy {
 /// Blanket implementation for all the `T` that have what we need.
 impl<T> ToHuman for T
 where
-    T: Into<u64>,
+    T: TryInto<u64>,
     T: Copy,
 {
 }
@@ -34,12 +34,12 @@ pub struct HumanTime<T>(T);
 
 impl<T> Display for HumanTime<T>
 where
-    T: Into<u64>,
+    T: TryInto<u64>,
     T: Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut unit = "s";
-        let mut time = self.0.into() as f64;
+        let mut time = self.0.try_into().map_err(|_| std::fmt::Error)? as f64;
         let m = 60f64;
         let h = m * m;
         let d = h * 24.0;
@@ -92,12 +92,12 @@ pub struct HumanNumber<T>(T);
 
 impl<T> Display for HumanNumber<T>
 where
-    T: Into<u64>,
+    T: TryInto<u64>,
     T: Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut unit = "";
-        let mut size = self.0.into() as f64;
+        let mut size = self.0.try_into().map_err(|_| std::fmt::Error)? as f64;
         let k = 1_000f64;
         let m = k * k;
         let b = m * k;
