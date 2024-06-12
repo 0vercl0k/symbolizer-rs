@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use kdmp_parser::KernelDumpParser;
 use symbolizer::{AddrSpace, Builder, Module};
 use udmp_parser::UserDumpParser;

@@ -323,7 +323,7 @@ fn main() -> Result<()> {
     // We need to parse the crash-dump to figure out where drivers / user-modules
     // are loaded at, and to read enough information out of the PE to download PDB
     // files ourselves.
-    let parser = KernelDumpParser::new(&crash_dump_path).context("failed to create dump parser")?;
+    let parser = KernelDumpParser::new(crash_dump_path).context("failed to create dump parser")?;
 
     // Figure out what is the symbol path we should be using. We will use the one
     // specified by the user, or will try to find one in the `_NT_SYMBOL_PATH`
