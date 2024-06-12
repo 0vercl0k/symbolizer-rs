@@ -20,7 +20,7 @@ thiserror = "1.0.61"
 anyhow = "1.0.86"
 
 [dev-dependencies]
-kdmp-parser = "0.2"
+kdmp-parser = "0.3"
 udmp-parser = "0.2"
 object = { version = "0.36.0", default-features = false, features = [
     "read",
@@ -28,3 +28,4 @@ object = { version = "0.36.0", default-features = false, features = [
     "pe",
     "std",
 ] }
+clap = { version = "4.5", features = ["derive"] }

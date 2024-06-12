@@ -1,6 +1,7 @@
 // Axel '0vercl0k' Souchet - February 20 2024
 //! This module contains the implementation of the [`Guid`] type.
 use std::fmt::Display;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 
@@ -15,16 +16,16 @@ pub struct Guid {
     d3: [u8; 8],
 }
 
-impl TryFrom<&str> for Guid {
-    type Error = Error;
+impl FromStr for Guid {
+    type Err = Error;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.len() != 32 {
-            return Err(anyhow!("the guid str ({value:?}) should be 32 bytes long").into());
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 32 {
+            return Err(anyhow!("the guid str ({s:?}) should be 32 bytes long").into());
         }
 
         let mut bytes = [0; 16];
-        for (n, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+        for (n, chunk) in s.as_bytes().chunks_exact(2).enumerate() {
             let s = std::str::from_utf8(chunk)?;
             bytes[n] = u8::from_str_radix(s, 16)?;
         }
@@ -70,6 +71,8 @@ impl Display for Guid {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::Guid;
 
     const NTDLL_GUID: Guid = Guid {
@@ -81,14 +84,13 @@ mod tests {
 
     #[test]
     fn malformed_guids() {
-        assert!(Guid::try_from("8D5D5ED5D5B8AA609A82600C14E3004D1").is_err());
-
-        assert!(Guid::try_from("8D5D5ED5D5B8AA609A82600C14E3004").is_err());
+        assert!(Guid::from_str("8D5D5ED5D5B8AA609A82600C14E3004D1").is_err());
+        assert!(Guid::from_str("8D5D5ED5D5B8AA609A82600C14E3004").is_err());
     }
 
     #[test]
     fn non_hex_guids() {
-        assert!(Guid::try_from("8D5D5ED5D5B8AA609A82600C14E3004Z").is_err());
+        assert!(Guid::from_str("8D5D5ED5D5B8AA609A82600C14E3004Z").is_err());
     }
 
     #[test]
@@ -99,7 +101,7 @@ mod tests {
         // 00007ff9`aa450000 00007ff9`aa667000   ntdll      (pdb symbols)
         // c:\dbg\sym\ntdll.pdb\8D5D5ED5D5B8AA609A82600C14E3004D1\ntdll.pdb
         assert_eq!(
-            Guid::try_from("8D5D5ED5D5B8AA609A82600C14E3004D").unwrap(),
+            "8D5D5ED5D5B8AA609A82600C14E3004D".parse::<Guid>().unwrap(),
             NTDLL_GUID
         )
     }

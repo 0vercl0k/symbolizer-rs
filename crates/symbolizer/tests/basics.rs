@@ -99,7 +99,7 @@ fn raw_virt() {
     assert!(stats.did_download(
         PdbId::new(
             "mrt100.pdb",
-            "A20DA44BF08DB27D2BA0928F79447C7D".try_into().unwrap(),
+            "A20DA44BF08DB27D2BA0928F79447C7D".parse().unwrap(),
             1
         )
         .unwrap()
@@ -191,7 +191,7 @@ fn raw_file() {
     assert!(stats.did_download(
         PdbId::new(
             "mrt100.pdb",
-            "A20DA44BF08DB27D2BA0928F79447C7D".try_into().unwrap(),
+            "A20DA44BF08DB27D2BA0928F79447C7D".parse().unwrap(),
             1
         )
         .unwrap()
@@ -273,7 +273,7 @@ fn user_dump() {
     assert!(stats.did_download(
         PdbId::new(
             "ntdll.pdb",
-            "8D5D5ED5D5B8AA609A82600C14E3004D".try_into().unwrap(),
+            "8D5D5ED5D5B8AA609A82600C14E3004D".parse().unwrap(),
             1
         )
         .unwrap()
