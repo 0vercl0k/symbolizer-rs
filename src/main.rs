@@ -38,7 +38,7 @@ impl StatsBuilder {
         self.n_files += 1;
     }
 
-    pub fn stop(self, symbolizer: KernelDumpSymbolizer) -> Stats {
+    pub fn stop(self, symbolizer: Symbolizer) -> Stats {
         Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
@@ -105,8 +105,6 @@ impl AddrSpace for AddrSpaceWrapper {
             .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     }
 }
-
-type KernelDumpSymbolizer<'a> = Symbolizer<'a, AddrSpaceWrapper>;
 
 /// The style of the symbols.
 #[derive(Default, Debug, Clone, ValueEnum)]
@@ -232,7 +230,8 @@ fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> 
 
 /// Process an input file and symbolize every line.
 fn symbolize_file(
-    symbolizer: &mut KernelDumpSymbolizer,
+    symbolizer: &mut Symbolizer,
+    addr_space: &mut impl AddrSpace,
     trace_path: impl AsRef<Path>,
     args: &CliArgs,
 ) -> Result<usize> {
@@ -267,7 +266,7 @@ fn symbolize_file(
 
         match args.style {
             SymbolStyle::Modoff => symbolizer.modoff(addr, &mut output),
-            SymbolStyle::Full => symbolizer.full(addr, &mut output),
+            SymbolStyle::Full => symbolizer.full(addr_space, addr, &mut output),
         }
         .with_context(|| {
             format!(
@@ -349,9 +348,9 @@ fn main() -> Result<()> {
     let mut wrapper = AddrSpaceWrapper::new(parser);
     let mut symbolizer = SymbolizerBuilder::default()
         .online(args.symsrv.iter())
-        .modules(&modules)
+        .modules(modules)
         .symcache(&symcache)
-        .build(&mut wrapper)?;
+        .build()?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize
@@ -371,7 +370,7 @@ fn main() -> Result<()> {
     let total = paths.len();
     for (idx, path) in paths.into_iter().enumerate() {
         print!("\x1B[2K\r");
-        symbolize_file(&mut symbolizer, &path, &args)?;
+        symbolize_file(&mut symbolizer, &mut wrapper, &path, &args)?;
         stats_builder.done_file();
         print!("[{}/{total}] {} done", idx + 1, path.display());
         io::stdout().flush()?;

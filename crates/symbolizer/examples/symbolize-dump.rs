@@ -88,13 +88,13 @@ fn user(dmp: UserDumpParser, addr: u64) -> Result<()> {
 
     let mut wrapper = UserDumpAddrSpace(dmp);
     let mut symb = Builder::default()
-        .modules(&modules)
+        .modules(modules)
         .msft_symsrv()
-        .symcache(&sympath().expect("define a _NT_SYMBOL_PATH"))
-        .build(&mut wrapper)?;
+        .symcache(sympath().expect("define a _NT_SYMBOL_PATH"))
+        .build()?;
 
     let mut s = Vec::new();
-    symb.full(addr, &mut s)?;
+    symb.full(&mut wrapper, addr, &mut s)?;
     println!("{addr:#x}: {}", String::from_utf8(s)?);
 
     Ok(())
@@ -129,13 +129,13 @@ fn kernel(dmp: KernelDumpParser, addr: u64) -> Result<()> {
 
     let mut wrapper = KernelDumpAdrSpace(&dmp);
     let mut symb = Builder::default()
-        .modules(&modules)
+        .modules(modules)
         .msft_symsrv()
-        .symcache(&sympath().expect("define a _NT_SYMBOL_PATH"))
-        .build(&mut wrapper)?;
+        .symcache(sympath().expect("define a _NT_SYMBOL_PATH"))
+        .build()?;
 
     let mut s = Vec::new();
-    symb.full(addr, &mut s)?;
+    symb.full(&mut wrapper, addr, &mut s)?;
     println!("{addr:#x}: {}", String::from_utf8(s)?);
 
     Ok(())

@@ -26,9 +26,9 @@ const EXPECTED_RAW: [(u64, &str, &str); 4] = [
     (0xdeadbeef, "0x00000000deadbeef", "0x00000000deadbeef"),
 ];
 
-fn fixture(name: &str) -> PathBuf {
+fn testdata(name: &str) -> PathBuf {
     PathBuf::from(&env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
+        .join("testdatas")
         .join(name)
 }
 
@@ -74,19 +74,19 @@ impl AddrSpace for RawAddressSpace {
 
 #[test]
 fn raw_virt() {
-    let mut raw_addr_space = RawAddressSpace::new(&fixture("mrt100.raw")).unwrap();
+    let mut raw_addr_space = RawAddressSpace::new(&testdata("mrt100.raw")).unwrap();
     let len = raw_addr_space.len();
 
     let mut symb = Builder::default()
-        .modules(&vec![Module::new("mrt100", 0x0, len)])
+        .modules(vec![Module::new("mrt100", 0x0, len)])
         .msft_symsrv()
         .symcache(&symcache("basics"))
-        .build(&mut raw_addr_space)
+        .build()
         .unwrap();
 
     for (addr, expected_full, expected_modoff) in EXPECTED_RAW {
         let mut full = Vec::new();
-        symb.full(addr, &mut full).unwrap();
+        symb.full(&mut raw_addr_space, addr, &mut full).unwrap();
         assert_eq!(String::from_utf8(full).unwrap(), expected_full);
 
         let mut modoff = Vec::new();
@@ -164,21 +164,21 @@ impl<'data> AddrSpace for FileAddressSpace<'data> {
 
 #[test]
 fn raw_file() {
-    let file = File::open(fixture("mrt100.dll")).unwrap();
+    let file = File::open(testdata("mrt100.dll")).unwrap();
     let cache = ReadCache::new(file);
     let mut file_addr_space = FileAddressSpace::new(&cache).unwrap();
     let len = file_addr_space.len();
 
     let mut symb = Builder::default()
-        .modules(&vec![Module::new("mrt100", 0x0, len)])
+        .modules(vec![Module::new("mrt100", 0x0, len)])
         .online(vec!["https://msdl.microsoft.com/download/symbols/"].into_iter())
         .symcache(&symcache("basics"))
-        .build(&mut file_addr_space)
+        .build()
         .unwrap();
 
     for (addr, expected_full, expected_modoff) in EXPECTED_RAW {
         let mut full = Vec::new();
-        symb.full(addr, &mut full).unwrap();
+        symb.full(&mut file_addr_space, addr, &mut full).unwrap();
         assert_eq!(String::from_utf8(full).unwrap(), expected_full);
 
         let mut modoff = Vec::new();
@@ -237,7 +237,7 @@ impl<'a> AddrSpace for UserDumpAddrSpace<'a> {
 
 #[test]
 fn user_dump() {
-    let dump = UserDumpParser::new(fixture("udmp.dmp")).unwrap();
+    let dump = UserDumpParser::new(testdata("udmp.dmp")).unwrap();
     let modules = dump
         .modules()
         .values()
@@ -252,17 +252,17 @@ fn user_dump() {
 
     let mut udmp_addr_space = UserDumpAddrSpace(dump);
     let mut symb = Builder::default()
-        .modules(&modules)
+        .modules(modules.clone())
         .msft_symsrv()
         .symcache(&symcache("basics"))
-        .build(&mut udmp_addr_space)
+        .build()
         .unwrap();
 
     // 0:000> u 00007ff9`aa4f8eb2
     // ntdll!EvtIntReportEventWorker$fin$0+0x2:
     // 00007ff9`aa4f8eb2 4883ec50        sub     rsp,50h
     let mut output = Vec::new();
-    symb.full(0x7ff9aa4f8eb2, &mut output).unwrap();
+    symb.full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output).unwrap();
     assert_eq!(
         String::from_utf8(output).unwrap(),
         "ntdll.dll!EvtIntReportEventWorker$fin$0+0x2"
@@ -282,15 +282,15 @@ fn user_dump() {
     drop(symb);
     let mut symb_offline = Builder::default()
         .symcache(&symcache("basics"))
-        .modules(&modules)
-        .build(&mut udmp_addr_space)
+        .modules(modules)
+        .build()
         .unwrap();
 
     // 0:000> u 00007ff9`aa4f8eb2
     // ntdll!EvtIntReportEventWorker$fin$0+0x2:
     // 00007ff9`aa4f8eb2 4883ec50        sub     rsp,50h
     let mut output = Vec::new();
-    symb_offline.full(0x7ff9aa4f8eb2, &mut output).unwrap();
+    symb_offline.full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output).unwrap();
     assert_ne!(
         String::from_utf8(output).unwrap(),
         "ntdll.dll!EvtIntReportEventWorker$fin$0+0x2"

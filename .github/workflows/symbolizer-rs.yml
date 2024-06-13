@@ -71,10 +71,10 @@ jobs:
         run: cargo test --release --workspace
 
       - name: cargo check
-        run: cargo check --workspace
+        run: cargo check --workspace --examples --tests
 
       - name: cargo build
-        run: cargo build --release --workspace
+        run: cargo build --release --workspace --examples --tests
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

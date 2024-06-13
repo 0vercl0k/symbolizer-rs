@@ -226,9 +226,7 @@ pub struct Config {
 /// The [`Symbolizer`] is the main object that glues all the logic.
 ///
 /// It downloads, parses PDB information, and symbolizes.
-pub struct Symbolizer<'a, AS>
-where
-    AS: AddrSpace,
+pub struct Symbolizer
 {
     /// Keep track of some statistics such as the number of lines symbolized,
     /// PDB downloaded, etc.
@@ -239,10 +237,6 @@ where
     /// This is the list of kernel / user modules read from the kernel crash
     /// dump.
     modules: Modules,
-    /// The kernel dump parser. We need this to be able to read PDB identifiers
-    /// out of the PE headers, as well as reading the export tables of those
-    /// modules.
-    addr_space: RefCell<&'a mut AS>,
     /// List of symbol servers to try to download PDBs from when needed.
     symsrvs: Vec<String>,
     /// Caches addresses to symbols. This allows us to not have to symbolize an
@@ -254,16 +248,14 @@ where
     offline: bool,
 }
 
-impl<'a, AS> Symbolizer<'a, AS>
-where
-    AS: AddrSpace,
+impl Symbolizer
 {
     pub fn builder() -> Builder<NoSymcache> {
         Builder::default()
     }
 
     /// Create a [`Symbolizer`].
-    pub fn new(addr_space: &'a mut AS, config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> Result<Self> {
         let (offline, symsrvs) = match config.mode {
             PdbLookupMode::Offline =>
             // If the user wants offline, then let's do that..
@@ -291,7 +283,6 @@ where
             stats: Default::default(),
             symcache: config.symcache,
             modules: Modules::new(config.modules),
-            addr_space: RefCell::new(addr_space),
             symsrvs,
             addr_cache: Default::default(),
             pdb_caches: Default::default(),
@@ -322,7 +313,7 @@ where
     /// or remotely) and extract every bit of relevant information for us.
     /// Finally, the result will be kept around to symbolize addresses in that
     /// module faster in the future.
-    fn try_symbolize_addr_from_pdbs(&self, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr_from_pdbs(&self, addr_space: &mut impl AddrSpace, addr: u64) -> Result<Option<Rc<String>>> {
         trace!("symbolizing address {addr:#x}..");
         let Some(module) = self.modules.find(addr) else {
             trace!("address {addr:#x} doesn't belong to any module");
@@ -341,7 +332,7 @@ where
 
         // Let's start by parsing the PE to get its exports, and PDB information if
         // there's any.
-        let pe = Pe::new(*self.addr_space.borrow_mut(), module.at.start)?;
+        let pe = Pe::new(addr_space, module.at.start)?;
 
         // Ingest the EAT.
         builder.ingest(pe.exports.into_iter());
@@ -388,14 +379,14 @@ where
     /// If the address has been symbolized before, it will be in the
     /// `addr_cache` already. If not, we need to take the slow path and ask the
     /// right [`PdbCache`] which might require to create one in the first place.
-    fn try_symbolize_addr(&self, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr(&self, addr_space: &mut impl AddrSpace, addr: u64) -> Result<Option<Rc<String>>> {
         match self.addr_cache.borrow_mut().entry(addr) {
             hash_map::Entry::Occupied(o) => {
                 self.stats.cache_hit();
                 return Ok(Some(o.get().clone()));
             }
             hash_map::Entry::Vacant(v) => {
-                let Some(symbol) = self.try_symbolize_addr_from_pdbs(addr)? else {
+                let Some(symbol) = self.try_symbolize_addr_from_pdbs(addr_space, addr)? else {
                     return Ok(None);
                 };
 
@@ -432,8 +423,8 @@ where
 
     /// Symbolize `addr` in the `module!function+offset` style and write the
     /// result into `output`.
-    pub fn full(&mut self, addr: u64, output: &mut impl Write) -> Result<()> {
-        match self.try_symbolize_addr(addr)? {
+    pub fn full(&mut self, addr_space: &mut impl AddrSpace, addr: u64, output: &mut impl Write) -> Result<()> {
+        match self.try_symbolize_addr(addr_space, addr)? {
             Some(sym) => {
                 output
                     .write_all(sym.as_bytes())
