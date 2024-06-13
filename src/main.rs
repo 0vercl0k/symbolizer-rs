@@ -349,7 +349,7 @@ fn main() -> Result<()> {
     let mut symbolizer = SymbolizerBuilder::default()
         .online(args.symsrv.iter())
         .modules(modules)
-        .symcache(&symcache)
+        .symcache(symcache)
         .build()?;
 
     let paths = if args.trace.is_dir() {
