@@ -226,8 +226,7 @@ pub struct Config {
 /// The [`Symbolizer`] is the main object that glues all the logic.
 ///
 /// It downloads, parses PDB information, and symbolizes.
-pub struct Symbolizer
-{
+pub struct Symbolizer {
     /// Keep track of some statistics such as the number of lines symbolized,
     /// PDB downloaded, etc.
     stats: StatsBuilder,
@@ -248,8 +247,7 @@ pub struct Symbolizer
     offline: bool,
 }
 
-impl Symbolizer
-{
+impl Symbolizer {
     pub fn builder() -> Builder<NoSymcache> {
         Builder::default()
     }
@@ -313,7 +311,11 @@ impl Symbolizer
     /// or remotely) and extract every bit of relevant information for us.
     /// Finally, the result will be kept around to symbolize addresses in that
     /// module faster in the future.
-    fn try_symbolize_addr_from_pdbs(&self, addr_space: &mut impl AddrSpace, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr_from_pdbs(
+        &self,
+        addr_space: &mut impl AddrSpace,
+        addr: u64,
+    ) -> Result<Option<Rc<String>>> {
         trace!("symbolizing address {addr:#x}..");
         let Some(module) = self.modules.find(addr) else {
             trace!("address {addr:#x} doesn't belong to any module");
@@ -379,7 +381,11 @@ impl Symbolizer
     /// If the address has been symbolized before, it will be in the
     /// `addr_cache` already. If not, we need to take the slow path and ask the
     /// right [`PdbCache`] which might require to create one in the first place.
-    fn try_symbolize_addr(&self, addr_space: &mut impl AddrSpace, addr: u64) -> Result<Option<Rc<String>>> {
+    fn try_symbolize_addr(
+        &self,
+        addr_space: &mut impl AddrSpace,
+        addr: u64,
+    ) -> Result<Option<Rc<String>>> {
         match self.addr_cache.borrow_mut().entry(addr) {
             hash_map::Entry::Occupied(o) => {
                 self.stats.cache_hit();
@@ -423,7 +429,12 @@ impl Symbolizer
 
     /// Symbolize `addr` in the `module!function+offset` style and write the
     /// result into `output`.
-    pub fn full(&mut self, addr_space: &mut impl AddrSpace, addr: u64, output: &mut impl Write) -> Result<()> {
+    pub fn full(
+        &mut self,
+        addr_space: &mut impl AddrSpace,
+        addr: u64,
+        output: &mut impl Write,
+    ) -> Result<()> {
         match self.try_symbolize_addr(addr_space, addr)? {
             Some(sym) => {
                 output

@@ -60,8 +60,7 @@ impl<SC> Builder<SC> {
 }
 
 impl Builder<Symcache> {
-    pub fn build(self) -> Result<Symbolizer>
-    {
+    pub fn build(self) -> Result<Symbolizer> {
         let Self {
             symcache,
             modules,

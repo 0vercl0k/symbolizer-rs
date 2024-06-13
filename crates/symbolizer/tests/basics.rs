@@ -80,7 +80,7 @@ fn raw_virt() {
     let mut symb = Builder::default()
         .modules(vec![Module::new("mrt100", 0x0, len)])
         .msft_symsrv()
-        .symcache(&symcache("basics"))
+        .symcache(symcache("basics"))
         .build()
         .unwrap();
 
@@ -171,8 +171,8 @@ fn raw_file() {
 
     let mut symb = Builder::default()
         .modules(vec![Module::new("mrt100", 0x0, len)])
-        .online(vec!["https://msdl.microsoft.com/download/symbols/"].into_iter())
-        .symcache(&symcache("basics"))
+        .online(vec!["https://msdl.microsoft.com/download/symbols/"])
+        .symcache(symcache("basics"))
         .build()
         .unwrap();
 
@@ -254,7 +254,7 @@ fn user_dump() {
     let mut symb = Builder::default()
         .modules(modules.clone())
         .msft_symsrv()
-        .symcache(&symcache("basics"))
+        .symcache(symcache("basics"))
         .build()
         .unwrap();
 
@@ -262,7 +262,8 @@ fn user_dump() {
     // ntdll!EvtIntReportEventWorker$fin$0+0x2:
     // 00007ff9`aa4f8eb2 4883ec50        sub     rsp,50h
     let mut output = Vec::new();
-    symb.full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output).unwrap();
+    symb.full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output)
+        .unwrap();
     assert_eq!(
         String::from_utf8(output).unwrap(),
         "ntdll.dll!EvtIntReportEventWorker$fin$0+0x2"
@@ -281,7 +282,7 @@ fn user_dump() {
 
     drop(symb);
     let mut symb_offline = Builder::default()
-        .symcache(&symcache("basics"))
+        .symcache(symcache("basics"))
         .modules(modules)
         .build()
         .unwrap();
@@ -290,7 +291,9 @@ fn user_dump() {
     // ntdll!EvtIntReportEventWorker$fin$0+0x2:
     // 00007ff9`aa4f8eb2 4883ec50        sub     rsp,50h
     let mut output = Vec::new();
-    symb_offline.full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output).unwrap();
+    symb_offline
+        .full(&mut udmp_addr_space, 0x7ff9aa4f8eb2, &mut output)
+        .unwrap();
     assert_ne!(
         String::from_utf8(output).unwrap(),
         "ntdll.dll!EvtIntReportEventWorker$fin$0+0x2"
