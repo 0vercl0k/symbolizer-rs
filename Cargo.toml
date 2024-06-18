@@ -4,17 +4,17 @@ categories = ["command-line-utilities", "development-tools::debugging"]
 description = "A fast execution trace symbolizer for Windows that runs on all major platforms and doesn't depend on any Microsoft libraries."
 include = ["/Cargo.toml", "/LICENSE", "/src/**", "README.md"]
 version = "0.1.0"
-authors.workspace = true
-license.workspace = true
-rust-version.workspace = true
-repository.workspace = true
-keywords.workspace = true
-edition.workspace = true
+authors = ["Axel '0vercl0k' Souchet"]
+license = "MIT"
+rust-version = "1.70"
+repository = "https://github.com/0vercl0k/symbolizer-rs"
+keywords = ["windows", "kernel", "crash-dump", "symbols", "pdb"]
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-symbolizer = { path = "crates/symbolizer" }
+addr-symbolizer = { path = "../addr-symbolizer" }
 env_logger = "0.11"
 itoa = "1.0"
 kdmp-parser = "0.3"
@@ -22,12 +22,3 @@ kdmp-parser = "0.3"
 [profile.release]
 debug = true
 panic = "abort"
-
-[workspace]
-members = ["crates/*"]
-package.authors = ["Axel '0vercl0k' Souchet"]
-package.license = "MIT"
-package.rust-version = "1.70"
-package.repository = "https://github.com/0vercl0k/symbolizer-rs"
-package.keywords = ["windows", "kernel", "crash-dump", "symbols", "pdb"]
-package.edition = "2021"
