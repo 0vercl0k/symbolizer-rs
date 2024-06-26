@@ -232,7 +232,7 @@ where
             .with_context(|| anyhow!("failed to turn {addr_str:?} into an integer"))
         {
             Ok(o) => o,
-            Err(e) => return Some(Err(e)),
+            e => return Some(e),
         };
 
         // If we hit the EOF, let's record the last range of data we'll consume.
@@ -265,9 +265,7 @@ where
 mod tests {
     use std::io::BufReader;
 
-    use anyhow::Result;
-
-    use super::HexAddressesIterator;
+    use super::{HexAddressesIterator, Result};
 
     #[test]
     fn t1() {
