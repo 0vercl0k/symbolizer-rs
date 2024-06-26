@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, fs, io};
 
+use addr_symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
-use symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
 
 mod hex_addrs_iter;
 mod human;
@@ -50,7 +50,7 @@ impl StatsBuilder {
 struct Stats {
     time: u64,
     n_files: u64,
-    symbolizer_stats: symbolizer::Stats,
+    symbolizer_stats: addr_symbolizer::Stats,
 }
 
 impl Display for Stats {
