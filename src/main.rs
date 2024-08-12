@@ -153,6 +153,9 @@ struct CliArgs {
     /// parsed if present.
     #[arg(long)]
     symcache: Option<PathBuf>,
+    /// Import PDBs found in the specified directories into the symbol cache.
+    #[arg(long)]
+    import_pdbs: Option<Vec<PathBuf>>,
     /// The size in bytes of the buffer used to write data into the output
     /// files.
     #[arg(long, default_value_t = 3 * 1024 * 1024)]
@@ -259,9 +262,9 @@ fn symbolize_file(
 
         if args.line_numbers {
             let mut buffer = itoa::Buffer::new();
-            output.write_all(&[b'l'])?;
+            output.write_all(b"l")?;
             output.write_all(buffer.format(line_number).as_bytes())?;
-            output.write_all(&[b':', b' '])?;
+            output.write_all(b": ")?;
         }
 
         match args.style {
@@ -275,7 +278,7 @@ fn symbolize_file(
             )
         })?;
 
-        output.write_all(&[b'\n'])?;
+        output.write_all(b"\n")?;
 
         if lines_symbolized >= limit {
             println!(
@@ -346,11 +349,19 @@ fn main() -> Result<()> {
 
     // All right, ready to create the symbolizer.
     let mut wrapper = AddrSpaceWrapper::new(parser);
-    let mut symbolizer = SymbolizerBuilder::default()
-        .online(args.symsrv.iter())
+    let mut builder = SymbolizerBuilder::default()
         .modules(modules)
-        .symcache(symcache)
-        .build()?;
+        .symcache(symcache)?;
+
+    if let Some(import_pdbs) = &args.import_pdbs {
+        builder = builder.import_pdbs(import_pdbs.iter())?;
+    }
+
+    if !args.offline {
+        builder = builder.online(args.symsrv.iter());
+    }
+
+    let mut symbolizer = builder.build()?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize
