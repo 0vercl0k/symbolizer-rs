@@ -65,16 +65,16 @@ jobs:
         run: rustup default stable
 
       - name: cargo test
-        run: cargo test --workspace
+        run: cargo test --all-targets
 
       - name: cargo test release
-        run: cargo test --release --workspace
+        run: cargo test --release --all-targets
 
       - name: cargo check
-        run: cargo check --workspace --examples --tests
+        run: cargo check --all-targets
 
       - name: cargo build
-        run: cargo build --release --workspace --examples --tests
+        run: cargo build --release --all-targets
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
