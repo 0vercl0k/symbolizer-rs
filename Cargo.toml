@@ -1,34 +1,24 @@
 [package]
 name = "symbolizer-rs"
-version = "0.1.0"
-edition = "2021"
-authors = ["Axel '0vercl0k' Souchet"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 description = "A fast execution trace symbolizer for Windows that runs on all major platforms and doesn't depend on any Microsoft libraries."
 include = ["/Cargo.toml", "/LICENSE", "/src/**", "README.md"]
-keywords = ["windows", "kernel", "crash-dump", "symbols", "pdb"]
+version = "0.1.0"
+authors = ["Axel '0vercl0k' Souchet"]
 license = "MIT"
-repository = "https://github.com/0vercl0k/symbolizer-rs"
 rust-version = "1.70"
+repository = "https://github.com/0vercl0k/symbolizer-rs"
+keywords = ["windows", "kernel", "crash-dump", "symbols", "pdb"]
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-pdb = "0.8"
-log = "0.4"
-env_logger = "0.11"
 clap = { version = "4.5", features = ["derive"] }
-msvc-demangler = "0.10"
-ureq = { version = "2.9", default-features = false, features = [
-    "tls",
-    "gzip",
-] }
-kdmp-parser = "0.2"
-itoa = "1.0.11"
+addr-symbolizer = { version = "0.1" }
+env_logger = "0.11"
+itoa = "1.0"
+kdmp-parser = "0.5"
 
 [profile.release]
 debug = true
 panic = "abort"
-
-[[bin]]
-name = "symbolizer-rs"
-path = "src/main.rs"

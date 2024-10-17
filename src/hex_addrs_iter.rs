@@ -75,7 +75,7 @@ fn fast_hex_str_to_u32(hex: [u8; 8]) -> u32 {
 
 /// Convert the `slice` of an hexadecimal string into an integer.
 fn hex_slice(slice: &[u8]) -> Result<u64> {
-    let slice = slice.strip_prefix(&[b'0', b'x']).unwrap_or(slice);
+    let slice = slice.strip_prefix(b"0x").unwrap_or(slice);
     if slice.len() > 16 {
         bail!("{slice:?} has more digits than supported (16)");
     }
@@ -165,7 +165,7 @@ where
         if let Some(last_range) = self.last_range {
             let last_slice = &self.buf[last_range];
             // Be nice, and ignore a potential trailing end of line..
-            let last_slice = last_slice.strip_suffix(&[b'\n']).unwrap_or(last_slice);
+            let last_slice = last_slice.strip_suffix(b"\n").unwrap_or(last_slice);
             // ..and if there's a carriage return right before, let's ignore this one as
             // well.
             let last_slice = last_slice
@@ -214,7 +214,7 @@ where
             //     what we return         where the next slice starts at
             Some(idx) => {
                 let without_lf = &parse_slice[..idx];
-                let without_cr = without_lf.strip_suffix(&[b'\r']);
+                let without_cr = without_lf.strip_suffix(b"\r");
 
                 (without_cr.unwrap_or(without_lf), idx + 1)
             }
@@ -232,7 +232,7 @@ where
             .with_context(|| anyhow!("failed to turn {addr_str:?} into an integer"))
         {
             Ok(o) => o,
-            Err(e) => return Some(Err(e)),
+            e => return Some(e),
         };
 
         // If we hit the EOF, let's record the last range of data we'll consume.
@@ -265,9 +265,7 @@ where
 mod tests {
     use std::io::BufReader;
 
-    use anyhow::Result;
-
-    use super::HexAddressesIterator;
+    use super::{HexAddressesIterator, Result};
 
     #[test]
     fn t1() {
