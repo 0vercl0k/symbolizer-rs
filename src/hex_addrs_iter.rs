@@ -6,7 +6,7 @@
 use std::io::Read;
 use std::ops::RangeTo;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 
 /// Fill a `buffer` starting at the offset `append_idx` and return the slice of
 /// data that was read. Also, return if EOF was hit or not.
@@ -288,7 +288,9 @@ mod tests {
             0x1111111111111111,
         ];
 
-        let l = String::from("0x1\n0x22\n0x333\n0x4444\n0x55555\n0x666666\n0x7777777\n0x88888888\n0x999999999\n0xaaaaaaaaaa\n0xbbbbbbbbbbb\n0xcccccccccccc\n0xddddddddddddd\n0xeeeeeeeeeeeeee\n0xfffffffffffffff\n0x1111111111111111");
+        let l = String::from(
+            "0x1\n0x22\n0x333\n0x4444\n0x55555\n0x666666\n0x7777777\n0x88888888\n0x999999999\n0xaaaaaaaaaa\n0xbbbbbbbbbbb\n0xcccccccccccc\n0xddddddddddddd\n0xeeeeeeeeeeeeee\n0xfffffffffffffff\n0x1111111111111111",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -317,7 +319,9 @@ mod tests {
             0xfffffffffffffff,
             0x1111111111111111,
         ];
-        let l = String::from("1\n22\n333\n4444\n55555\n666666\n7777777\n88888888\n999999999\naaaaaaaaaa\nbbbbbbbbbbb\ncccccccccccc\nddddddddddddd\neeeeeeeeeeeeee\nfffffffffffffff\n1111111111111111");
+        let l = String::from(
+            "1\n22\n333\n4444\n55555\n666666\n7777777\n88888888\n999999999\naaaaaaaaaa\nbbbbbbbbbbb\ncccccccccccc\nddddddddddddd\neeeeeeeeeeeeee\nfffffffffffffff\n1111111111111111",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -352,7 +356,9 @@ mod tests {
             0xfffff80339dca5e0,
             0xfffff80339dca5e4,
         ];
-        let l = String::from("0x77baa2c0\n0xfffff80339dca5c0\n0xfffff80339dca5c1\n0xfffff80339dca5c8\n0xfffff80339dca5d0\n0xfffff80339dca5d4\n0xfffff80339dca5d8\n0xfffff80339dca5dc\n0xfffff80339dca5e0\n0xfffff80339dca5e4");
+        let l = String::from(
+            "0x77baa2c0\n0xfffff80339dca5c0\n0xfffff80339dca5c1\n0xfffff80339dca5c8\n0xfffff80339dca5d0\n0xfffff80339dca5d4\n0xfffff80339dca5d8\n0xfffff80339dca5dc\n0xfffff80339dca5e0\n0xfffff80339dca5e4",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -373,7 +379,9 @@ mod tests {
             0xfffff80339cf6146,
             0xfffff80339cf6149,
         ];
-        let l = String::from("0xfffff80339cf61a6\r\n0xfffff80339cf6150\r\n0xfffff80339cf6154\r\n0xfffff80339cf615b\r\n0xfffff80339cf6140\r\n0xfffff80339cf6143\r\n0xfffff80339cf6146\r\n0xfffff80339cf6149\r\n");
+        let l = String::from(
+            "0xfffff80339cf61a6\r\n0xfffff80339cf6150\r\n0xfffff80339cf6154\r\n0xfffff80339cf615b\r\n0xfffff80339cf6140\r\n0xfffff80339cf6143\r\n0xfffff80339cf6146\r\n0xfffff80339cf6149\r\n",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -441,25 +449,31 @@ mod tests {
     #[test]
     fn too_big() {
         let l = String::from("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n0xbbbbb\n");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]
     fn malformed_entry() {
         let l = String::from("aaaaa0xa\n0xbbbbb");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]
     fn malformed_end() {
         let l = String::from("aaaaa0xa\n0xbbbbb\n\n");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]

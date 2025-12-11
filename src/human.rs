@@ -54,7 +54,7 @@ where
             unit = "day";
         }
 
-        write!(f, "{:.1}{}", time, unit)
+        write!(f, "{time:.1}{unit}")
     }
 }
 
@@ -83,7 +83,7 @@ where
             unit = "kb";
         }
 
-        write!(f, "{:.1}{}", size, unit)
+        write!(f, "{size:.1}{unit}")
     }
 }
 
@@ -112,6 +112,6 @@ where
             unit = "k";
         }
 
-        write!(f, "{:.1}{}", size, unit)
+        write!(f, "{size:.1}{unit}")
     }
 }

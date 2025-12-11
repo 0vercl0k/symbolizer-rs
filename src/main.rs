@@ -2,13 +2,13 @@
 #![doc = include_str!("../README.md")]
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{stdout, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Write, stdout};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, fs, io};
 
 use addr_symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::KernelDumpParser;
 
@@ -311,7 +311,9 @@ fn main() -> Result<()> {
         let wtf_base_path = args.trace.parent().expect("parent");
         let wtf_crash_dump_path = wtf_base_path.join("state").join("mem.dmp");
         if !wtf_crash_dump_path.is_file() {
-            bail!("A dump file wasn't specified, and a wtf state directory wasn't found either in {wtf_base_path:?}. Please use --crash-dump.");
+            bail!(
+                "A dump file wasn't specified, and a wtf state directory wasn't found either in {wtf_base_path:?}. Please use --crash-dump."
+            );
         }
 
         println!(
