@@ -57,8 +57,9 @@ fn fill_buffer<'buffer>(
 ///
 /// Implementation from Johnny Lee documented in the "Fast hex number string to
 /// int" blog post: <https://johnnylee-sde.github.io/Fast-hex-number-string-to-int/>.
+#[expect(clippy::unreadable_literal)]
 fn fast_hex_str_to_u32(hex: [u8; 8]) -> u32 {
-    let eight = unsafe { std::mem::transmute::<[u8; 8], u64>(hex) };
+    let eight = u64::from_ne_bytes(hex);
     let n = eight & 0x4F4F4F4F_4F4F4F4F;
     let alphahex = n & 0x40404040_40404040;
     let n0 = if alphahex == 0 {
@@ -90,9 +91,11 @@ fn hex_slice(slice: &[u8]) -> Result<u64> {
     let mut buffer = [b'0'; 16];
     let idx = buffer.len() - slice.len();
     buffer[idx..].copy_from_slice(slice);
-    let mut res = fast_hex_str_to_u32(buffer[0..8].try_into().unwrap()) as u64;
+    let mut res = u64::from(fast_hex_str_to_u32(buffer[0..8].try_into().unwrap()));
     res = res.wrapping_mul(0x1_00000000);
-    res = res.wrapping_add(fast_hex_str_to_u32(buffer[8..16].try_into().unwrap()) as u64);
+    res = res.wrapping_add(u64::from(fast_hex_str_to_u32(
+        buffer[8..16].try_into().unwrap(),
+    )));
 
     Ok(res)
 }
@@ -205,27 +208,27 @@ where
         // Find a line feed and where the next 'chunk' starts at.
         // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
         //                         ^
-        let (addr_str, next_slice_idx) = match parse_slice.iter().position(|x| *x == b'\n') {
-            // If we found a line feed, then the next chunk starts right after it and we return the
-            // slice up until that point. But there might be a carriage return right
-            // before the line feed so take care of that.
-            // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
-            //  ^^^^^^^^^^^^^^^^^^^       ^
-            //     what we return         where the next slice starts at
-            Some(idx) => {
+        let (addr_str, next_slice_idx) =
+            if let Some(idx) = parse_slice.iter().position(|x| *x == b'\n') {
+                // If we found a line feed, then the next chunk starts right after it and we
+                // return the slice up until that point. But there might be a
+                // carriage return right before the line feed so take care of
+                // that.
+                //
+                // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
+                //  ^^^^^^^^^^^^^^^^^^^       ^
+                //     what we return         where the next slice starts at
                 let without_lf = &parse_slice[..idx];
                 let without_cr = without_lf.strip_suffix(b"\r");
 
                 (without_cr.unwrap_or(without_lf), idx + 1)
-            }
-            None => {
+            } else {
                 // If we haven't found any end line, well let's consider this the end. This
                 // current entry will be the last one we yield.
                 self.done = true;
 
                 (parse_slice, 0)
-            }
-        };
+            };
 
         // Convert the byte slice into an address.
         let addr = match hex_slice(addr_str)
