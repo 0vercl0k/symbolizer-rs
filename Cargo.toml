@@ -14,7 +14,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-addr-symbolizer = { version = "0.1" }
+addr-symbolizer = { git = "https://github.com/0vercl0k/addr-symbolizer-rs.git", branch = "fbl_0.2.0" }
 env_logger = "0.11"
 itoa = "1.0"
 kdmp-parser = { git = "https://github.com/0vercl0k/kdmp-parser-rs.git", branch = "fbl_pedantic" }
@@ -22,3 +22,6 @@ kdmp-parser = { git = "https://github.com/0vercl0k/kdmp-parser-rs.git", branch =
 [profile.release]
 debug = true
 panic = "abort"
+
+[lints.clippy]
+pedantic = "warn"

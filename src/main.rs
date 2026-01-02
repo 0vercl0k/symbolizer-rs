@@ -10,13 +10,14 @@ use std::{env, fs, io};
 use addr_symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Parser, ValueEnum};
-use kdmp_parser::KernelDumpParser;
+use kdmp_parser::parse::KernelDumpParser;
 
 mod hex_addrs_iter;
 mod human;
 
 use hex_addrs_iter::HexAddressesIterator;
 use human::ToHuman;
+use kdmp_parser::virt;
 
 #[derive(Debug)]
 struct StatsBuilder {
@@ -94,14 +95,8 @@ impl AddrSpaceWrapper {
 
 impl AddrSpace for AddrSpaceWrapper {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
-        self.parser
-            .virt_read(addr.into(), buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    }
-
-    fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>> {
-        self.parser
-            .try_virt_read(addr.into(), buf)
+        virt::Reader::new(&self.parser)
+            .read(addr.into(), buf)
             .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     }
 }
