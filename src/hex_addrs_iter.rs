@@ -278,17 +278,17 @@ mod tests {
             0x333,
             0x4444,
             0x55555,
-            0x666666,
-            0x7777777,
-            0x88888888,
-            0x999999999,
-            0xaaaaaaaaaa,
-            0xbbbbbbbbbbb,
-            0xcccccccccccc,
-            0xddddddddddddd,
-            0xeeeeeeeeeeeeee,
-            0xfffffffffffffff,
-            0x1111111111111111,
+            0x0066_6666,
+            0x0777_7777,
+            0x8888_8888,
+            0x0009_9999_9999,
+            0x00aa_aaaa_aaaa,
+            0x0bbb_bbbb_bbbb,
+            0xcccc_cccc_cccc,
+            0x000d_dddd_dddd_dddd,
+            0x00ee_eeee_eeee_eeee,
+            0x0fff_ffff_ffff_ffff,
+            0x1111_1111_1111_1111,
         ];
 
         let l = String::from(
@@ -310,17 +310,17 @@ mod tests {
             0x333,
             0x4444,
             0x55555,
-            0x666666,
-            0x7777777,
-            0x88888888,
-            0x999999999,
-            0xaaaaaaaaaa,
-            0xbbbbbbbbbbb,
-            0xcccccccccccc,
-            0xddddddddddddd,
-            0xeeeeeeeeeeeeee,
-            0xfffffffffffffff,
-            0x1111111111111111,
+            0x0066_6666,
+            0x0777_7777,
+            0x8888_8888,
+            0x0009_9999_9999,
+            0x00aa_aaaa_aaaa,
+            0x0bbb_bbbb_bbbb,
+            0xcccc_cccc_cccc,
+            0x000d_dddd_dddd_dddd,
+            0x00ee_eeee_eeee_eeee,
+            0x0fff_ffff_ffff_ffff,
+            0x1111_1111_1111_1111,
         ];
         let l = String::from(
             "1\n22\n333\n4444\n55555\n666666\n7777777\n88888888\n999999999\naaaaaaaaaa\nbbbbbbbbbbb\ncccccccccccc\nddddddddddddd\neeeeeeeeeeeeee\nfffffffffffffff\n1111111111111111",
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn t3() {
-        let expected = vec![0xaaaaaaaaaaaaaaau64, 0];
+        let expected = vec![0x0aaa_aaaa_aaaa_aaaa_u64, 0];
         let l = String::from("0xaaaaaaaaaaaaaaa\r\n0");
         assert_eq!(
             expected,
@@ -348,16 +348,16 @@ mod tests {
     #[test]
     fn t4() {
         let expected = vec![
-            0x77baa2c0,
-            0xfffff80339dca5c0,
-            0xfffff80339dca5c1,
-            0xfffff80339dca5c8,
-            0xfffff80339dca5d0,
-            0xfffff80339dca5d4,
-            0xfffff80339dca5d8,
-            0xfffff80339dca5dc,
-            0xfffff80339dca5e0,
-            0xfffff80339dca5e4,
+            0x77ba_a2c0,
+            0xffff_f803_39dc_a5c0,
+            0xffff_f803_39dc_a5c1,
+            0xffff_f803_39dc_a5c8,
+            0xffff_f803_39dc_a5d0,
+            0xffff_f803_39dc_a5d4,
+            0xffff_f803_39dc_a5d8,
+            0xffff_f803_39dc_a5dc,
+            0xffff_f803_39dc_a5e0,
+            0xffff_f803_39dc_a5e4,
         ];
         let l = String::from(
             "0x77baa2c0\n0xfffff80339dca5c0\n0xfffff80339dca5c1\n0xfffff80339dca5c8\n0xfffff80339dca5d0\n0xfffff80339dca5d4\n0xfffff80339dca5d8\n0xfffff80339dca5dc\n0xfffff80339dca5e0\n0xfffff80339dca5e4",
@@ -373,14 +373,14 @@ mod tests {
     #[test]
     fn t5() {
         let expected = vec![
-            0xfffff80339cf61a6,
-            0xfffff80339cf6150,
-            0xfffff80339cf6154,
-            0xfffff80339cf615b,
-            0xfffff80339cf6140,
-            0xfffff80339cf6143,
-            0xfffff80339cf6146,
-            0xfffff80339cf6149,
+            0xffff_f803_39cf_61a6,
+            0xffff_f803_39cf_6150,
+            0xffff_f803_39cf_6154,
+            0xffff_f803_39cf_615b,
+            0xffff_f803_39cf_6140,
+            0xffff_f803_39cf_6143,
+            0xffff_f803_39cf_6146,
+            0xffff_f803_39cf_6149,
         ];
         let l = String::from(
             "0xfffff80339cf61a6\r\n0xfffff80339cf6150\r\n0xfffff80339cf6154\r\n0xfffff80339cf615b\r\n0xfffff80339cf6140\r\n0xfffff80339cf6143\r\n0xfffff80339cf6146\r\n0xfffff80339cf6149\r\n",
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn t6() {
-        let expected = vec![0x1111111, 0x22222222];
+        let expected = vec![0x0111_1111, 0x2222_2222];
         let l = String::from("0x1111111\n0x22222222");
         assert_eq!(
             expected,
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn t7() {
-        let expected = vec![0xaabbccddeeff0011];
+        let expected = vec![0xaabb_ccdd_eeff_0011];
         let l = String::from("0xaabbccddeeff0011");
         assert_eq!(
             expected,
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn empty() {
         let l = String::from("0x77cb27c4\n0x77cb27c5\n0x77cb27c9\n");
-        let expected = vec![0x77cb27c4, 0x77cb27c5, 0x77cb27c9];
+        let expected = vec![0x77cb_27c4, 0x77cb_27c5, 0x77cb_27c9];
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
