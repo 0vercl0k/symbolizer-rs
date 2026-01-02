@@ -1,4 +1,4 @@
-// f Axel '0vercl0k' Souchet - February 19 2024
+// Axel '0vercl0k' Souchet - February 19 2024
 #![doc = include_str!("../README.md")]
 #![allow(clippy::missing_panics_doc)]
 use std::fmt::Display;
