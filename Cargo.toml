@@ -3,22 +3,24 @@ name = "symbolizer-rs"
 categories = ["command-line-utilities", "development-tools::debugging"]
 description = "A fast execution trace symbolizer for Windows that runs on all major platforms and doesn't depend on any Microsoft libraries."
 include = ["/Cargo.toml", "/LICENSE", "/src/**", "README.md"]
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Axel '0vercl0k' Souchet"]
 license = "MIT"
-rust-version = "1.70"
 repository = "https://github.com/0vercl0k/symbolizer-rs"
 keywords = ["windows", "kernel", "crash-dump", "symbols", "pdb"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-addr-symbolizer = { version = "0.1" }
+addr-symbolizer = "0.2"
 env_logger = "0.11"
 itoa = "1.0"
-kdmp-parser = "0.5"
+kdmp-parser = "0.8"
 
 [profile.release]
 debug = true
 panic = "abort"
+
+[lints.clippy]
+pedantic = "warn"

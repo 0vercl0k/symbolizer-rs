@@ -1,22 +1,24 @@
 // Axel '0vercl0k' Souchet - February 19 2024
 #![doc = include_str!("../README.md")]
+#![allow(clippy::missing_panics_doc)]
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{stdout, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Write, stdout};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, fs, io};
 
 use addr_symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Parser, ValueEnum};
-use kdmp_parser::KernelDumpParser;
+use kdmp_parser::parse::KernelDumpParser;
 
 mod hex_addrs_iter;
 mod human;
 
 use hex_addrs_iter::HexAddressesIterator;
 use human::ToHuman;
+use kdmp_parser::virt;
 
 #[derive(Debug)]
 struct StatsBuilder {
@@ -39,17 +41,22 @@ impl StatsBuilder {
     }
 
     pub fn stop(self, symbolizer: Symbolizer) -> Stats {
-        Stats {
+        let stats = Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
             symbolizer_stats: symbolizer.stats(),
-        }
+        };
+
+        drop(symbolizer);
+
+        stats
     }
 }
 
 struct Stats {
     time: u64,
     n_files: u64,
+    #[expect(clippy::struct_field_names)]
     symbolizer_stats: addr_symbolizer::Stats,
 }
 
@@ -94,14 +101,8 @@ impl AddrSpaceWrapper {
 
 impl AddrSpace for AddrSpaceWrapper {
     fn read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<usize> {
-        self.parser
-            .virt_read(addr.into(), buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
-    }
-
-    fn try_read_at(&mut self, addr: u64, buf: &mut [u8]) -> io::Result<Option<usize>> {
-        self.parser
-            .try_virt_read(addr.into(), buf)
+        virt::Reader::new(&self.parser)
+            .read(addr.into(), buf)
             .map_err(|e| io::Error::new(io::ErrorKind::Unsupported, e))
     }
 }
@@ -149,7 +150,7 @@ struct CliArgs {
     /// Symbol servers to use to download PDBs; you can provide more than one.
     #[arg(long, default_value = "https://msdl.microsoft.com/download/symbols/", action = ArgAction::Append)]
     symsrv: Vec<String>,
-    /// Specify a symbol cache path. If not specified, _NT_SYMBOL_PATH will be
+    /// Specify a symbol cache path. If not specified, `_NT_SYMBOL_PATH` will be
     /// parsed if present.
     #[arg(long)]
     symcache: Option<PathBuf>,
@@ -169,13 +170,17 @@ struct CliArgs {
 }
 
 /// Calculate a percentage value.
+#[must_use]
 pub fn percentage(how_many: u64, how_many_total: u64) -> u32 {
     assert!(
         how_many_total > 0,
         "{how_many_total} needs to be bigger than 0"
     );
 
-    ((how_many * 1_00) / how_many_total) as u32
+    let p = (how_many * 1_00) / how_many_total;
+    assert!(p <= 100);
+
+    u32::try_from(p).unwrap()
 }
 
 /// Parse the `_NT_SYMBOL_PATH` environment variable to try the path of a symbol
@@ -228,7 +233,7 @@ fn get_output_file(args: &CliArgs, input: &Path, output: &Path) -> Result<File> 
 
     // We can now create the output file!
     File::create(output_path.clone())
-        .with_context(|| format!("failed to create output file {output_path:?}"))
+        .with_context(|| format!("failed to create output file {}", output_path.display()))
 }
 
 /// Process an input file and symbolize every line.
@@ -311,7 +316,10 @@ fn main() -> Result<()> {
         let wtf_base_path = args.trace.parent().expect("parent");
         let wtf_crash_dump_path = wtf_base_path.join("state").join("mem.dmp");
         if !wtf_crash_dump_path.is_file() {
-            bail!("A dump file wasn't specified, and a wtf state directory wasn't found either in {wtf_base_path:?}. Please use --crash-dump.");
+            bail!(
+                "A dump file wasn't specified, and a wtf state directory wasn't found either in {}. Please use --crash-dump.",
+                wtf_base_path.display()
+            );
         }
 
         println!(

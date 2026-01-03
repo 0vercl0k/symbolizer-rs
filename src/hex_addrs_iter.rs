@@ -6,7 +6,7 @@
 use std::io::Read;
 use std::ops::RangeTo;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 
 /// Fill a `buffer` starting at the offset `append_idx` and return the slice of
 /// data that was read. Also, return if EOF was hit or not.
@@ -57,8 +57,9 @@ fn fill_buffer<'buffer>(
 ///
 /// Implementation from Johnny Lee documented in the "Fast hex number string to
 /// int" blog post: <https://johnnylee-sde.github.io/Fast-hex-number-string-to-int/>.
+#[expect(clippy::unreadable_literal)]
 fn fast_hex_str_to_u32(hex: [u8; 8]) -> u32 {
-    let eight = unsafe { std::mem::transmute::<[u8; 8], u64>(hex) };
+    let eight = u64::from_ne_bytes(hex);
     let n = eight & 0x4F4F4F4F_4F4F4F4F;
     let alphahex = n & 0x40404040_40404040;
     let n0 = if alphahex == 0 {
@@ -90,9 +91,11 @@ fn hex_slice(slice: &[u8]) -> Result<u64> {
     let mut buffer = [b'0'; 16];
     let idx = buffer.len() - slice.len();
     buffer[idx..].copy_from_slice(slice);
-    let mut res = fast_hex_str_to_u32(buffer[0..8].try_into().unwrap()) as u64;
+    let mut res = u64::from(fast_hex_str_to_u32(buffer[0..8].try_into().unwrap()));
     res = res.wrapping_mul(0x1_00000000);
-    res = res.wrapping_add(fast_hex_str_to_u32(buffer[8..16].try_into().unwrap()) as u64);
+    res = res.wrapping_add(u64::from(fast_hex_str_to_u32(
+        buffer[8..16].try_into().unwrap(),
+    )));
 
     Ok(res)
 }
@@ -205,27 +208,27 @@ where
         // Find a line feed and where the next 'chunk' starts at.
         // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
         //                         ^
-        let (addr_str, next_slice_idx) = match parse_slice.iter().position(|x| *x == b'\n') {
-            // If we found a line feed, then the next chunk starts right after it and we return the
-            // slice up until that point. But there might be a carriage return right
-            // before the line feed so take care of that.
-            // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
-            //  ^^^^^^^^^^^^^^^^^^^       ^
-            //     what we return         where the next slice starts at
-            Some(idx) => {
+        let (addr_str, next_slice_idx) =
+            if let Some(idx) = parse_slice.iter().position(|x| *x == b'\n') {
+                // If we found a line feed, then the next chunk starts right after it and we
+                // return the slice up until that point. But there might be a
+                // carriage return right before the line feed so take care of
+                // that.
+                //
+                // |0|x|a|a|b|b|c|c|d|d|\r|\n|0|x|e|e|f|f|d|d|
+                //  ^^^^^^^^^^^^^^^^^^^       ^
+                //     what we return         where the next slice starts at
                 let without_lf = &parse_slice[..idx];
                 let without_cr = without_lf.strip_suffix(b"\r");
 
                 (without_cr.unwrap_or(without_lf), idx + 1)
-            }
-            None => {
+            } else {
                 // If we haven't found any end line, well let's consider this the end. This
                 // current entry will be the last one we yield.
                 self.done = true;
 
                 (parse_slice, 0)
-            }
-        };
+            };
 
         // Convert the byte slice into an address.
         let addr = match hex_slice(addr_str)
@@ -275,20 +278,22 @@ mod tests {
             0x333,
             0x4444,
             0x55555,
-            0x666666,
-            0x7777777,
-            0x88888888,
-            0x999999999,
-            0xaaaaaaaaaa,
-            0xbbbbbbbbbbb,
-            0xcccccccccccc,
-            0xddddddddddddd,
-            0xeeeeeeeeeeeeee,
-            0xfffffffffffffff,
-            0x1111111111111111,
+            0x0066_6666,
+            0x0777_7777,
+            0x8888_8888,
+            0x0009_9999_9999,
+            0x00aa_aaaa_aaaa,
+            0x0bbb_bbbb_bbbb,
+            0xcccc_cccc_cccc,
+            0x000d_dddd_dddd_dddd,
+            0x00ee_eeee_eeee_eeee,
+            0x0fff_ffff_ffff_ffff,
+            0x1111_1111_1111_1111,
         ];
 
-        let l = String::from("0x1\n0x22\n0x333\n0x4444\n0x55555\n0x666666\n0x7777777\n0x88888888\n0x999999999\n0xaaaaaaaaaa\n0xbbbbbbbbbbb\n0xcccccccccccc\n0xddddddddddddd\n0xeeeeeeeeeeeeee\n0xfffffffffffffff\n0x1111111111111111");
+        let l = String::from(
+            "0x1\n0x22\n0x333\n0x4444\n0x55555\n0x666666\n0x7777777\n0x88888888\n0x999999999\n0xaaaaaaaaaa\n0xbbbbbbbbbbb\n0xcccccccccccc\n0xddddddddddddd\n0xeeeeeeeeeeeeee\n0xfffffffffffffff\n0x1111111111111111",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -305,19 +310,21 @@ mod tests {
             0x333,
             0x4444,
             0x55555,
-            0x666666,
-            0x7777777,
-            0x88888888,
-            0x999999999,
-            0xaaaaaaaaaa,
-            0xbbbbbbbbbbb,
-            0xcccccccccccc,
-            0xddddddddddddd,
-            0xeeeeeeeeeeeeee,
-            0xfffffffffffffff,
-            0x1111111111111111,
+            0x0066_6666,
+            0x0777_7777,
+            0x8888_8888,
+            0x0009_9999_9999,
+            0x00aa_aaaa_aaaa,
+            0x0bbb_bbbb_bbbb,
+            0xcccc_cccc_cccc,
+            0x000d_dddd_dddd_dddd,
+            0x00ee_eeee_eeee_eeee,
+            0x0fff_ffff_ffff_ffff,
+            0x1111_1111_1111_1111,
         ];
-        let l = String::from("1\n22\n333\n4444\n55555\n666666\n7777777\n88888888\n999999999\naaaaaaaaaa\nbbbbbbbbbbb\ncccccccccccc\nddddddddddddd\neeeeeeeeeeeeee\nfffffffffffffff\n1111111111111111");
+        let l = String::from(
+            "1\n22\n333\n4444\n55555\n666666\n7777777\n88888888\n999999999\naaaaaaaaaa\nbbbbbbbbbbb\ncccccccccccc\nddddddddddddd\neeeeeeeeeeeeee\nfffffffffffffff\n1111111111111111",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -328,7 +335,7 @@ mod tests {
 
     #[test]
     fn t3() {
-        let expected = vec![0xaaaaaaaaaaaaaaau64, 0];
+        let expected = vec![0x0aaa_aaaa_aaaa_aaaa_u64, 0];
         let l = String::from("0xaaaaaaaaaaaaaaa\r\n0");
         assert_eq!(
             expected,
@@ -341,18 +348,20 @@ mod tests {
     #[test]
     fn t4() {
         let expected = vec![
-            0x77baa2c0,
-            0xfffff80339dca5c0,
-            0xfffff80339dca5c1,
-            0xfffff80339dca5c8,
-            0xfffff80339dca5d0,
-            0xfffff80339dca5d4,
-            0xfffff80339dca5d8,
-            0xfffff80339dca5dc,
-            0xfffff80339dca5e0,
-            0xfffff80339dca5e4,
+            0x77ba_a2c0,
+            0xffff_f803_39dc_a5c0,
+            0xffff_f803_39dc_a5c1,
+            0xffff_f803_39dc_a5c8,
+            0xffff_f803_39dc_a5d0,
+            0xffff_f803_39dc_a5d4,
+            0xffff_f803_39dc_a5d8,
+            0xffff_f803_39dc_a5dc,
+            0xffff_f803_39dc_a5e0,
+            0xffff_f803_39dc_a5e4,
         ];
-        let l = String::from("0x77baa2c0\n0xfffff80339dca5c0\n0xfffff80339dca5c1\n0xfffff80339dca5c8\n0xfffff80339dca5d0\n0xfffff80339dca5d4\n0xfffff80339dca5d8\n0xfffff80339dca5dc\n0xfffff80339dca5e0\n0xfffff80339dca5e4");
+        let l = String::from(
+            "0x77baa2c0\n0xfffff80339dca5c0\n0xfffff80339dca5c1\n0xfffff80339dca5c8\n0xfffff80339dca5d0\n0xfffff80339dca5d4\n0xfffff80339dca5d8\n0xfffff80339dca5dc\n0xfffff80339dca5e0\n0xfffff80339dca5e4",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -364,16 +373,18 @@ mod tests {
     #[test]
     fn t5() {
         let expected = vec![
-            0xfffff80339cf61a6,
-            0xfffff80339cf6150,
-            0xfffff80339cf6154,
-            0xfffff80339cf615b,
-            0xfffff80339cf6140,
-            0xfffff80339cf6143,
-            0xfffff80339cf6146,
-            0xfffff80339cf6149,
+            0xffff_f803_39cf_61a6,
+            0xffff_f803_39cf_6150,
+            0xffff_f803_39cf_6154,
+            0xffff_f803_39cf_615b,
+            0xffff_f803_39cf_6140,
+            0xffff_f803_39cf_6143,
+            0xffff_f803_39cf_6146,
+            0xffff_f803_39cf_6149,
         ];
-        let l = String::from("0xfffff80339cf61a6\r\n0xfffff80339cf6150\r\n0xfffff80339cf6154\r\n0xfffff80339cf615b\r\n0xfffff80339cf6140\r\n0xfffff80339cf6143\r\n0xfffff80339cf6146\r\n0xfffff80339cf6149\r\n");
+        let l = String::from(
+            "0xfffff80339cf61a6\r\n0xfffff80339cf6150\r\n0xfffff80339cf6154\r\n0xfffff80339cf615b\r\n0xfffff80339cf6140\r\n0xfffff80339cf6143\r\n0xfffff80339cf6146\r\n0xfffff80339cf6149\r\n",
+        );
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))
@@ -384,7 +395,7 @@ mod tests {
 
     #[test]
     fn t6() {
-        let expected = vec![0x1111111, 0x22222222];
+        let expected = vec![0x0111_1111, 0x2222_2222];
         let l = String::from("0x1111111\n0x22222222");
         assert_eq!(
             expected,
@@ -396,7 +407,7 @@ mod tests {
 
     #[test]
     fn t7() {
-        let expected = vec![0xaabbccddeeff0011];
+        let expected = vec![0xaabb_ccdd_eeff_0011];
         let l = String::from("0xaabbccddeeff0011");
         assert_eq!(
             expected,
@@ -441,31 +452,37 @@ mod tests {
     #[test]
     fn too_big() {
         let l = String::from("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n0xbbbbb\n");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]
     fn malformed_entry() {
         let l = String::from("aaaaa0xa\n0xbbbbb");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]
     fn malformed_end() {
         let l = String::from("aaaaa0xa\n0xbbbbb\n\n");
-        assert!(HexAddressesIterator::new(BufReader::new(l.as_bytes()))
-            .collect::<Result<Vec<u64>>>()
-            .is_err());
+        assert!(
+            HexAddressesIterator::new(BufReader::new(l.as_bytes()))
+                .collect::<Result<Vec<u64>>>()
+                .is_err()
+        );
     }
 
     #[test]
     fn empty() {
         let l = String::from("0x77cb27c4\n0x77cb27c5\n0x77cb27c9\n");
-        let expected = vec![0x77cb27c4, 0x77cb27c5, 0x77cb27c9];
+        let expected = vec![0x77cb_27c4, 0x77cb_27c5, 0x77cb_27c9];
         assert_eq!(
             expected,
             HexAddressesIterator::new(BufReader::new(l.as_bytes()))

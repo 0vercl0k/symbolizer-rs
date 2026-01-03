@@ -4,6 +4,19 @@
 //! form.
 use std::fmt::Display;
 
+fn u64_to_f64(x: u64) -> Result<f64, std::fmt::Error> {
+    /// This is `2**53` which is the maximum `u64` value that can be represented
+    /// as an `f64` (53 bits of mantissa).
+    const MAX_U64_REPRESENTABLE_IN_F64: u64 = 9_007_199_254_740_992;
+
+    if x > MAX_U64_REPRESENTABLE_IN_F64 {
+        Err(std::fmt::Error)
+    } else {
+        #[expect(clippy::cast_precision_loss)]
+        Ok(x as f64)
+    }
+}
+
 /// This trait adds convenient functions to display data for Humans. It is the
 /// glue between the generic types [`HumanBytes<T>`], [`HumanNumber<T>`] and
 /// [`HumanTime<T>`].
@@ -38,14 +51,14 @@ where
     T: Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut time = u64_to_f64(self.0.try_into().map_err(|_| std::fmt::Error)?)?;
         let mut unit = "s";
-        let mut time = self.0.try_into().map_err(|_| std::fmt::Error)? as f64;
         let m = 60f64;
         let h = m * m;
         let d = h * 24.0;
         if time >= m {
             time /= m;
-            unit = "min"
+            unit = "min";
         } else if time >= h {
             time /= h;
             unit = "hr";
@@ -54,7 +67,7 @@ where
             unit = "day";
         }
 
-        write!(f, "{:.1}{}", time, unit)
+        write!(f, "{time:.1}{unit}")
     }
 }
 
@@ -67,14 +80,14 @@ where
     T: Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut size = u64_to_f64(self.0.into())?;
         let mut unit = "b";
-        let mut size = self.0.into() as f64;
         let k = 1_024f64;
         let m = k * k;
         let g = m * k;
         if size >= g {
             size /= g;
-            unit = "gb"
+            unit = "gb";
         } else if size >= m {
             size /= m;
             unit = "mb";
@@ -83,7 +96,7 @@ where
             unit = "kb";
         }
 
-        write!(f, "{:.1}{}", size, unit)
+        write!(f, "{size:.1}{unit}")
     }
 }
 
@@ -96,14 +109,14 @@ where
     T: Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut size = u64_to_f64(self.0.try_into().map_err(|_| std::fmt::Error)?)?;
         let mut unit = "";
-        let mut size = self.0.try_into().map_err(|_| std::fmt::Error)? as f64;
         let k = 1_000f64;
         let m = k * k;
         let b = m * k;
         if size >= b {
             size /= b;
-            unit = "b"
+            unit = "b";
         } else if size >= m {
             size /= m;
             unit = "m";
@@ -112,6 +125,6 @@ where
             unit = "k";
         }
 
-        write!(f, "{:.1}{}", size, unit)
+        write!(f, "{size:.1}{unit}")
     }
 }
