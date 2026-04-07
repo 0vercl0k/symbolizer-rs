@@ -251,9 +251,9 @@ fn symbolize_file(
     let input = File::open(trace_path)
         .with_context(|| format!("failed to open {}", trace_path.display()))?;
 
-    let writer: Box<dyn Write> = match &args.output {
-        Some(output) => Box::new(get_output_file(args, trace_path, output)?),
-        None => Box::new(stdout()),
+    let writer: &mut dyn Write = match &args.output {
+        Some(output) => &mut get_output_file(args, trace_path, output)?,
+        None => &mut stdout(),
     };
 
     let mut output = BufWriter::with_capacity(args.out_buffer_size, writer);
