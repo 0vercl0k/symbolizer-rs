@@ -77,7 +77,7 @@ jobs:
         run: cargo build --release --all-targets
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: symbolizer-rs.${{ matrix.os }}
           path: |
