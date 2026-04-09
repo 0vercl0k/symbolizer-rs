@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, fs, io};
 
-use addr_symbolizer::{AddrSpace, Builder as SymbolizerBuilder, Module, Symbolizer};
+use addr_symbolizer::{AddrSpace, Module, PdbLookupConfig, Symbolizer};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Parser, ValueEnum};
 use kdmp_parser::parse::KernelDumpParser;
@@ -44,7 +44,7 @@ impl StatsBuilder {
         let stats = Stats {
             time: self.start.elapsed().as_secs(),
             n_files: self.n_files,
-            symbolizer_stats: symbolizer.stats(),
+            symbolizer_stats: symbolizer.stats().clone(),
         };
 
         drop(symbolizer);
@@ -80,7 +80,7 @@ impl Display for Stats {
                 f,
                 ", downloaded {} / {} PDBs)",
                 size_downloaded.human_bytes(),
-                self.symbolizer_stats.amount_pdb_downloaded().human_number()
+                self.symbolizer_stats.pdb_download_count().human_number()
             )
         } else {
             write!(f, ")")
@@ -117,6 +117,9 @@ enum SymbolStyle {
     Full,
 }
 
+/// The default maximum amount of lines to process per file.
+const DEFAULT_LIMIT: usize = 20_000_000;
+
 /// The command line arguments.
 #[derive(Debug, Default, Parser)]
 #[command(about = "A fast execution trace symbolizer for Windows.")]
@@ -135,8 +138,9 @@ struct CliArgs {
     /// Skip a number of lines.
     #[arg(short, long, default_value_t = 0)]
     skip: usize,
-    /// The maximum amount of lines to process per file.
-    #[arg(short, long, default_value = "20000000")]
+    /// The maximum amount of lines to process per file (defaults to 20m, use
+    /// `0` for no limit).
+    #[arg(short, long)]
     limit: Option<usize>,
     /// The symbolization style (mod+offset or mod!f+offset).
     #[arg(long, default_value = "full")]
@@ -149,7 +153,7 @@ struct CliArgs {
     line_numbers: bool,
     /// Symbol servers to use to download PDBs; you can provide more than one.
     #[arg(long, default_value = "https://msdl.microsoft.com/download/symbols/", action = ArgAction::Append)]
-    symsrv: Vec<String>,
+    symsrvs: Vec<String>,
     /// Specify a symbol cache path. If not specified, `_NT_SYMBOL_PATH` will be
     /// parsed if present.
     #[arg(long)]
@@ -159,10 +163,10 @@ struct CliArgs {
     import_pdbs: Option<Vec<PathBuf>>,
     /// The size in bytes of the buffer used to write data into the output
     /// files.
-    #[arg(long, default_value_t = 3 * 1024 * 1024)]
+    #[arg(long, default_value_t = 3 * 1_024 * 1_024)]
     out_buffer_size: usize,
     /// The size in bytes of the buffer used to read data from the input files.
-    #[arg(long, default_value_t = 1024 * 1024)]
+    #[arg(long, default_value_t = 1_024 * 1_024)]
     in_buffer_size: usize,
     /// Don't try to download PDBs off the network.
     #[arg(long, default_value_t = false)]
@@ -247,17 +251,23 @@ fn symbolize_file(
     let input = File::open(trace_path)
         .with_context(|| format!("failed to open {}", trace_path.display()))?;
 
-    let writer: Box<dyn Write> = match &args.output {
-        Some(output) => Box::new(get_output_file(args, trace_path, output)?),
-        None => Box::new(stdout()),
+    let writer: &mut dyn Write = match &args.output {
+        Some(output) => &mut get_output_file(args, trace_path, output)?,
+        None => &mut stdout(),
     };
 
     let mut output = BufWriter::with_capacity(args.out_buffer_size, writer);
-    let mut line_number = 1 + args.skip;
     let mut lines_symbolized = 1;
-    let limit = args.limit.unwrap_or(usize::MAX);
+    let limit = match args.limit.unwrap_or(DEFAULT_LIMIT) {
+        // The `0` value is used as a way to say "there's no limit".
+        0 => None,
+        rest => Some(rest),
+    };
+
     let reader = BufReader::with_capacity(args.in_buffer_size, input);
-    for addr in HexAddressesIterator::new(reader).skip(args.skip) {
+    for (line_number, addr) in
+        (1 + args.skip..).zip(HexAddressesIterator::new(reader).skip(args.skip))
+    {
         let addr = addr.with_context(|| {
             format!(
                 "failed to get hex addr from l{line_number} of {}",
@@ -273,8 +283,8 @@ fn symbolize_file(
         }
 
         match args.style {
-            SymbolStyle::Modoff => symbolizer.modoff(addr, &mut output),
-            SymbolStyle::Full => symbolizer.full(addr_space, addr, &mut output),
+            SymbolStyle::Modoff => symbolizer.symbolize_modoff_into(addr, &mut output),
+            SymbolStyle::Full => symbolizer.symbolize_full_into(addr_space, addr, &mut output),
         }
         .with_context(|| {
             format!(
@@ -285,7 +295,9 @@ fn symbolize_file(
 
         output.write_all(b"\n")?;
 
-        if lines_symbolized >= limit {
+        if let Some(limit) = limit
+            && lines_symbolized >= limit
+        {
             println!(
                 "Hit maximum line limit {} for {}",
                 limit,
@@ -295,7 +307,6 @@ fn symbolize_file(
         }
 
         lines_symbolized += 1;
-        line_number += 1;
     }
 
     Ok(lines_symbolized)
@@ -357,19 +368,16 @@ fn main() -> Result<()> {
 
     // All right, ready to create the symbolizer.
     let mut wrapper = AddrSpaceWrapper::new(parser);
-    let mut builder = SymbolizerBuilder::default()
-        .modules(modules)
-        .symcache(symcache)?;
+    let pdb_lookup = if args.offline {
+        PdbLookupConfig::new(symcache)
+    } else {
+        PdbLookupConfig::with_symsrvs(symcache, args.symsrvs.clone())
+    }?;
+    let mut symbolizer = Symbolizer::new(pdb_lookup, modules);
 
     if let Some(import_pdbs) = &args.import_pdbs {
-        builder = builder.import_pdbs(import_pdbs.iter())?;
+        symbolizer.import_pdbs(import_pdbs.iter())?;
     }
-
-    if !args.offline {
-        builder = builder.online(args.symsrv.iter());
-    }
-
-    let mut symbolizer = builder.build()?;
 
     let paths = if args.trace.is_dir() {
         // If we received a path to a directory as input, then we will try to symbolize

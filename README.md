@@ -109,19 +109,17 @@ Options:
 
           [default: 0]
 
-  -m, --max <MAX>
-          The maximum amount of lines to process per file
-
-          [default: 20000000]
+  -l, --limit <LIMIT>
+          The maximum amount of lines to process per file (defaults to 20m, use `0` for no limit)
 
       --style <STYLE>
           The symbolization style (mod+offset or mod!f+offset)
 
-          [default: full]
-
           Possible values:
           - modoff: Module + offset style like `foo.dll+0x11`
           - full:   Full symbol style like `foo.dll!func+0x11`
+
+          [default: full]
 
       --overwrite
           Overwrite the output files if they exist
@@ -129,13 +127,16 @@ Options:
       --line-numbers
           Include line numbers in the symbolized output
 
-      --symsrv <SYMSRV>
+      --symsrvs <SYMSRVS>
           Symbol servers to use to download PDBs; you can provide more than one
 
           [default: https://msdl.microsoft.com/download/symbols/]
 
-      --sympath <SYMPATH>
-          Specify a symbol path. If not specified, _NT_SYMBOL_PATH will be parsed if present
+      --symcache <SYMCACHE>
+          Specify a symbol cache path. If not specified, `_NT_SYMBOL_PATH` will be parsed if present
+
+      --import-pdbs <IMPORT_PDBS>
+          Import PDBs found in the specified directories into the symbol cache
 
       --out-buffer-size <OUT_BUFFER_SIZE>
           The size in bytes of the buffer used to write data into the output files
@@ -146,6 +147,9 @@ Options:
           The size in bytes of the buffer used to read data from the input files
 
           [default: 1048576]
+
+      --offline
+          Don't try to download PDBs off the network
 
   -h, --help
           Print help (see a summary with '-h')
